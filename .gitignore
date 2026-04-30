@@ -1,0 +1,14 @@
+﻿# Datos sensibles — nunca subir
+alertas.jsonl
+tickets.json
+siem_output.log
+reporte_siem.pdf
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Windows
+Thumbs.db
+desktop.ini

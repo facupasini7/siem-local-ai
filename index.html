@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>SIEM Dashboard</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Segoe UI',sans-serif; background:#0d1117; color:#e6edf3; min-height:100vh; }
+
+header {
+  background:#161b22; border-bottom:1px solid #30363d;
+  padding:14px 28px; display:flex; align-items:center; justify-content:space-between;
+  flex-wrap:wrap; gap:10px;
+}
+header h1 { font-size:17px; font-weight:600; display:flex; align-items:center; gap:8px; }
+
+/* Barra de estado SIEM en vivo */
+.live-bar {
+  display:flex; align-items:center; gap:20px; flex-wrap:wrap;
+}
+.live-indicator {
+  display:flex; align-items:center; gap:6px;
+  font-size:12px; font-weight:600; color:#3fb950;
+}
+.live-indicator.detenido { color:#f85149; }
+.pulse { width:8px; height:8px; background:#3fb950; border-radius:50%; animation:pulse 2s infinite; }
+.pulse.off { background:#f85149; animation:none; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+.live-stat { font-size:12px; color:#8b949e; }
+.live-stat span { color:#e6edf3; font-weight:600; }
+
+.btn-pdf {
+  display:flex; align-items:center; gap:6px;
+  background:#238636; color:#fff; border:none;
+  padding:7px 16px; border-radius:6px; font-size:13px;
+  cursor:pointer; font-weight:600; transition:background .15s;
+  text-decoration:none;
+}
+.btn-pdf:hover { background:#2ea043; }
+.btn-pdf.loading { background:#444; cursor:wait; }
+
+.container { padding:20px 28px; }
+
+/* Stats */
+.stats { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:20px; }
+.stat-card { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:16px; }
+.stat-card .label { font-size:11px; color:#8b949e; text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px; }
+.stat-card .value { font-size:28px; font-weight:700; }
+.stat-card.critical .value { color:#f85149; }
+.stat-card.high     .value { color:#ff7b72; }
+.stat-card.medium   .value { color:#e3b341; }
+.stat-card.low      .value { color:#3fb950; }
+
+/* Filtros */
+.filtros { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; align-items:center; }
+.filtros span { font-size:12px; color:#8b949e; margin-right:4px; }
+.btn-filtro {
+  font-size:12px; padding:5px 14px; border-radius:20px;
+  border:1px solid #30363d; background:transparent; color:#8b949e;
+  cursor:pointer; transition:all .15s;
+}
+.btn-filtro.active, .btn-filtro:hover { background:#21262d; color:#e6edf3; border-color:#58a6ff; }
+.btn-filtro.f-critical.active { border-color:#f85149; color:#f85149; }
+.btn-filtro.f-high.active     { border-color:#ff7b72; color:#ff7b72; }
+.btn-filtro.f-medium.active   { border-color:#e3b341; color:#e3b341; }
+.btn-filtro.f-low.active      { border-color:#3fb950; color:#3fb950; }
+
+/* Cards */
+.alertas-lista { display:flex; flex-direction:column; gap:10px; }
+.alerta-card {
+  background:#161b22; border:1px solid #30363d; border-radius:10px;
+  border-left:4px solid #30363d; overflow:hidden;
+}
+.alerta-card.critical { border-left-color:#f85149; }
+.alerta-card.high     { border-left-color:#ff7b72; }
+.alerta-card.medium   { border-left-color:#e3b341; }
+.alerta-card.low      { border-left-color:#3fb950; }
+.alerta-card.resuelta      { opacity:.55; }
+.alerta-card.falso-positivo{ opacity:.4;  }
+
+.card-header {
+  padding:14px 18px; display:flex; align-items:center; gap:10px;
+  cursor:pointer; user-select:none;
+}
+.card-header:hover { background:#1c2128; }
+
+.badge {
+  font-size:11px; font-weight:700; padding:3px 10px; border-radius:20px;
+  text-transform:uppercase; letter-spacing:.5px; white-space:nowrap;
+}
+.badge.critical { background:#f8514922; color:#f85149; }
+.badge.high     { background:#ff7b7222; color:#ff7b72; }
+.badge.medium   { background:#e3b34122; color:#e3b341; }
+.badge.low      { background:#3fb95022; color:#3fb950; }
+
+.badge-estado {
+  font-size:11px; padding:3px 10px; border-radius:20px;
+  border:1px solid #30363d; color:#8b949e; white-space:nowrap;
+}
+.badge-estado.nueva          { border-color:#58a6ff; color:#58a6ff; }
+.badge-estado.investigando   { border-color:#e3b341; color:#e3b341; }
+.badge-estado.resuelta       { border-color:#3fb950; color:#3fb950; }
+.badge-estado.falso-positivo { border-color:#8b949e; color:#8b949e; }
+
+.card-ts      { font-size:12px; color:#8b949e; margin-left:auto; white-space:nowrap; }
+.card-summary { font-size:14px; color:#e6edf3; }
+
+.card-body { display:none; padding:0 18px 16px; border-top:1px solid #21262d; }
+.card-body.open { display:block; }
+
+.card-accion {
+  font-size:13px; color:#8b949e; margin:12px 0 10px;
+  padding:10px 14px; background:#0d1117; border-radius:8px;
+  border-left:3px solid #58a6ff;
+}
+.card-accion strong { color:#58a6ff; }
+
+.eventos-lista { margin-bottom:12px; }
+.evento-item { font-size:12px; color:#8b949e; display:flex; gap:8px; margin-bottom:3px; }
+.ev-id { color:#58a6ff; font-weight:600; min-width:60px; }
+
+.gestion { display:flex; gap:8px; margin-bottom:14px; align-items:center; flex-wrap:wrap; }
+.gestion span { font-size:12px; color:#8b949e; }
+.btn-estado {
+  font-size:12px; padding:5px 12px; border-radius:6px;
+  border:1px solid #30363d; background:transparent; color:#8b949e;
+  cursor:pointer; transition:all .15s;
+}
+.btn-estado:hover { background:#21262d; color:#e6edf3; }
+.btn-estado.active.nueva          { background:#58a6ff22; color:#58a6ff; border-color:#58a6ff; }
+.btn-estado.active.investigando   { background:#e3b34122; color:#e3b341; border-color:#e3b341; }
+.btn-estado.active.resuelta       { background:#3fb95022; color:#3fb950; border-color:#3fb950; }
+.btn-estado.active.falso-positivo { background:#8b949e22; color:#8b949e; border-color:#8b949e; }
+
+.comentarios-titulo { font-size:12px; color:#8b949e; margin-bottom:8px; text-transform:uppercase; letter-spacing:.5px; }
+.comentario-item { background:#0d1117; border-radius:6px; padding:8px 12px; margin-bottom:6px; }
+.comentario-ts   { font-size:11px; color:#8b949e; margin-bottom:3px; }
+.comentario-text { font-size:13px; color:#e6edf3; }
+
+.comentario-form { display:flex; gap:8px; margin-top:10px; }
+.comentario-form textarea {
+  flex:1; background:#0d1117; border:1px solid #30363d; border-radius:6px;
+  color:#e6edf3; font-size:13px; padding:8px 10px; resize:none; height:60px;
+  font-family:'Segoe UI',sans-serif;
+}
+.comentario-form textarea:focus { outline:none; border-color:#58a6ff; }
+.btn-comentar {
+  padding:8px 16px; background:#238636; color:#fff; border:none;
+  border-radius:6px; font-size:13px; cursor:pointer; align-self:flex-end;
+  transition:background .15s;
+}
+.btn-comentar:hover { background:#2ea043; }
+
+.empty { text-align:center; padding:50px; color:#8b949e; font-size:14px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🛡️ SIEM Dashboard — Ollama Local</h1>
+  <div class="live-bar">
+    <div class="live-indicator" id="live-indicator">
+      <span class="pulse" id="live-pulse"></span>
+      <span id="live-texto">Conectando...</span>
+    </div>
+    <div class="live-stat">Escaneos: <span id="live-escaneos">-</span></div>
+    <div class="live-stat">Ultimo: <span id="live-ultimo">-</span></div>
+    <div class="live-stat">Proximo: <span id="live-proximo">-</span></div>
+    <button class="btn-pdf" id="btn-pdf" onclick="descargarPDF()">
+      📄 Exportar PDF
+    </button>
+  </div>
+</header>
+
+<div class="container">
+  <div class="stats">
+    <div class="stat-card critical"><div class="label">🔴 Critical</div><div class="value" id="cnt-critical">0</div></div>
+    <div class="stat-card high">    <div class="label">🚨 High</div>    <div class="value" id="cnt-high">0</div></div>
+    <div class="stat-card medium">  <div class="label">⚠️ Medium</div>  <div class="value" id="cnt-medium">0</div></div>
+    <div class="stat-card low">     <div class="label">ℹ️ Low</div>     <div class="value" id="cnt-low">0</div></div>
+  </div>
+
+  <div class="filtros">
+    <span>Severidad:</span>
+    <button class="btn-filtro active" data-sev="todas">Todas</button>
+    <button class="btn-filtro f-critical" data-sev="critical">Critical</button>
+    <button class="btn-filtro f-high"     data-sev="high">High</button>
+    <button class="btn-filtro f-medium"   data-sev="medium">Medium</button>
+    <button class="btn-filtro f-low"      data-sev="low">Low</button>
+    <span style="margin-left:12px">Estado:</span>
+    <button class="btn-filtro active" data-est="todos">Todos</button>
+    <button class="btn-filtro" data-est="nueva">Nueva</button>
+    <button class="btn-filtro" data-est="investigando">Investigando</button>
+    <button class="btn-filtro" data-est="resuelta">Resuelta</button>
+    <button class="btn-filtro" data-est="falso-positivo">Falso positivo</button>
+  </div>
+
+  <div class="alertas-lista" id="alertas-lista">
+    <div class="empty">Cargando alertas...</div>
+  </div>
+</div>
+
+<script>
+let todasAlertas = [];
+let filtroSev = "todas";
+let filtroEst = "todos";
+
+// ── Filtros ──
+document.querySelectorAll('[data-sev]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-sev]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    filtroSev = btn.dataset.sev;
+    renderAlertas();
+  });
+});
+document.querySelectorAll('[data-est]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-est]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    filtroEst = btn.dataset.est;
+    renderAlertas();
+  });
+});
+
+// ── Estado SIEM en vivo ──
+async function actualizarEstadoSiem() {
+  try {
+    const res  = await fetch('/api/estado-siem');
+    const data = await res.json();
+
+    const indicador = document.getElementById('live-indicator');
+    const pulso     = document.getElementById('live-pulse');
+    const texto     = document.getElementById('live-texto');
+
+    if (data.estado === "activo") {
+      indicador.className = 'live-indicator';
+      pulso.className     = 'pulse';
+      texto.textContent   = 'LIVE';
+    } else {
+      indicador.className = 'live-indicator detenido';
+      pulso.className     = 'pulse off';
+      texto.textContent   = 'DETENIDO';
+    }
+
+    document.getElementById('live-escaneos').textContent = data.total_escaneos || '0';
+    document.getElementById('live-ultimo').textContent   = data.ultimo
+      ? data.ultimo.split(' ')[1] : '-';
+    document.getElementById('live-proximo').textContent  = data.proximo || '-';
+
+  } catch(e) {
+    document.getElementById('live-texto').textContent = 'Sin conexion';
+  }
+}
+
+// ── Exportar PDF ──
+async function descargarPDF() {
+  const btn = document.getElementById('btn-pdf');
+  btn.classList.add('loading');
+  btn.textContent = 'Generando...';
+  try {
+    const res  = await fetch('/api/pdf');
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `reporte_siem_${new Date().toISOString().slice(0,10)}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) {
+    alert('Error generando PDF: ' + e.message);
+  } finally {
+    btn.classList.remove('loading');
+    btn.innerHTML = '📄 Exportar PDF';
+  }
+}
+
+// ── Render alertas ──
+function renderAlertas() {
+  const lista = document.getElementById('alertas-lista');
+  const cnt   = {critical:0, high:0, medium:0, low:0};
+  todasAlertas.forEach(a => { if (cnt[a.severity] !== undefined) cnt[a.severity]++; });
+  ['critical','high','medium','low'].forEach(s =>
+    document.getElementById('cnt-'+s).textContent = cnt[s]);
+
+  const filtradas = todasAlertas.filter(a => {
+    if (filtroSev !== "todas" && a.severity !== filtroSev) return false;
+    if (filtroEst !== "todos" && a.estado   !== filtroEst) return false;
+    return true;
+  });
+
+  if (!filtradas.length) {
+    lista.innerHTML = '<div class="empty">Sin alertas para los filtros seleccionados.</div>';
+    return;
+  }
+
+  lista.innerHTML = filtradas.map(a => buildCard(a)).join('');
+
+  lista.querySelectorAll('.card-header').forEach(h => {
+    h.addEventListener('click', () => h.nextElementSibling.classList.toggle('open'));
+  });
+  lista.querySelectorAll('.btn-estado').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      cambiarEstado(btn.dataset.id, btn.dataset.estado);
+    });
+  });
+  lista.querySelectorAll('.btn-comentar').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const ta = document.querySelector(`.ta-comentario[data-id="${btn.dataset.id}"]`);
+      if (ta && ta.value.trim()) agregarComentario(btn.dataset.id, ta.value.trim(), ta);
+    });
+  });
+}
+
+function buildCard(a) {
+  const etiquetas = {
+    'nueva':'🔵 Nueva', 'investigando':'🟡 Investigando',
+    'resuelta':'🟢 Resuelta', 'falso-positivo':'⚫ Falso positivo'
+  };
+  const estados = ['nueva','investigando','resuelta','falso-positivo'];
+
+  const botonesEstado = estados.map(e => `
+    <button class="btn-estado ${a.estado===e?'active '+e:''}"
+      data-id="${a._id}" data-estado="${e}">${etiquetas[e]}</button>
+  `).join('');
+
+  const eventos = (a.events||[]).map(ev => `
+    <div class="evento-item">
+      <span class="ev-id">ID ${ev.id||'-'}</span>
+      <span>${ev.descripcion||'-'} — <em>${ev.riesgo||''}</em></span>
+    </div>`).join('');
+
+  const comentarios = (a.comentarios||[]).map(c => `
+    <div class="comentario-item">
+      <div class="comentario-ts">${c.ts}</div>
+      <div class="comentario-text">${c.texto}</div>
+    </div>`).join('') || '<div style="font-size:13px;color:#8b949e;margin-bottom:8px">Sin comentarios aun.</div>';
+
+  return `
+    <div class="alerta-card ${a.severity} ${a.estado}">
+      <div class="card-header">
+        <span class="badge ${a.severity}">${a.severity}</span>
+        <span class="badge-estado ${a.estado}">${etiquetas[a.estado]||a.estado}</span>
+        <span class="card-summary">${a.summary||'-'}</span>
+        <span class="card-ts">${a.timestamp||''}</span>
+      </div>
+      <div class="card-body">
+        <div class="card-accion"><strong>Accion:</strong> ${a.accion_recomendada||'-'}</div>
+        ${eventos ? `<div class="eventos-lista">${eventos}</div>` : ''}
+        <div class="gestion"><span>Estado:</span>${botonesEstado}</div>
+        <div class="comentarios-titulo">💬 Comentarios</div>
+        <div id="comentarios-${a._id}">${comentarios}</div>
+        <div class="comentario-form">
+          <textarea class="ta-comentario" data-id="${a._id}"
+            placeholder="Agrega una nota de investigacion..."></textarea>
+          <button class="btn-comentar" data-id="${a._id}">Agregar</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── API ──
+async function cambiarEstado(id, estado) {
+  await fetch('/api/estado', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({id: parseInt(id), estado})
+  });
+  await cargarAlertas();
+}
+
+async function agregarComentario(id, texto, ta) {
+  await fetch('/api/comentario', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({id: parseInt(id), texto})
+  });
+  ta.value = '';
+  await cargarAlertas();
+}
+
+async function cargarAlertas() {
+  try {
+    const res = await fetch('/api/alertas');
+    todasAlertas = await res.json();
+    renderAlertas();
+  } catch(e) {
+    document.getElementById('alertas-lista').innerHTML =
+      '<div class="empty">Error conectando. Esta corriendo dashboard.py?</div>';
+  }
+}
+
+// ── Init ──
+cargarAlertas();
+actualizarEstadoSiem();
+setInterval(cargarAlertas,       30000);
+setInterval(actualizarEstadoSiem, 15000);
+</script>
+</body>
+</html>
