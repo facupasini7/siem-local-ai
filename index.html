@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>SIEM Dashboard</title>
+<title>SIEM - Dashboard</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 body { font-family:'Segoe UI',sans-serif; background:#0d1117; color:#e6edf3; min-height:100vh; }
@@ -13,32 +13,36 @@ header {
   flex-wrap:wrap; gap:10px;
 }
 header h1 { font-size:17px; font-weight:600; display:flex; align-items:center; gap:8px; }
-
-/* Barra de estado SIEM en vivo */
-.live-bar {
-  display:flex; align-items:center; gap:20px; flex-wrap:wrap;
-}
-.live-indicator {
-  display:flex; align-items:center; gap:6px;
-  font-size:12px; font-weight:600; color:#3fb950;
-}
+.live-bar { display:flex; align-items:center; gap:20px; flex-wrap:wrap; }
+.live-indicator { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:#3fb950; }
 .live-indicator.detenido { color:#f85149; }
 .pulse { width:8px; height:8px; background:#3fb950; border-radius:50%; animation:pulse 2s infinite; }
 .pulse.off { background:#f85149; animation:none; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
-
 .live-stat { font-size:12px; color:#8b949e; }
 .live-stat span { color:#e6edf3; font-weight:600; }
-
 .btn-pdf {
-  display:flex; align-items:center; gap:6px;
-  background:#238636; color:#fff; border:none;
-  padding:7px 16px; border-radius:6px; font-size:13px;
+  display:flex; align-items:center; gap:6px; background:#238636; color:#fff;
+  border:none; padding:7px 16px; border-radius:6px; font-size:13px;
   cursor:pointer; font-weight:600; transition:background .15s;
-  text-decoration:none;
 }
 .btn-pdf:hover { background:#2ea043; }
 .btn-pdf.loading { background:#444; cursor:wait; }
+
+/* Tabs */
+.tabs {
+  background:#161b22; border-bottom:1px solid #30363d;
+  padding:0 28px; display:flex; gap:4px;
+}
+.tab {
+  padding:12px 20px; font-size:13px; font-weight:500; color:#8b949e;
+  border-bottom:2px solid transparent; cursor:pointer; transition:all .15s;
+}
+.tab:hover { color:#e6edf3; }
+.tab.active { color:#58a6ff; border-bottom-color:#58a6ff; }
+
+.tab-content { display:none; }
+.tab-content.active { display:block; }
 
 .container { padding:20px 28px; }
 
@@ -77,7 +81,7 @@ header h1 { font-size:17px; font-weight:600; display:flex; align-items:center; g
 .alerta-card.medium   { border-left-color:#e3b341; }
 .alerta-card.low      { border-left-color:#3fb950; }
 .alerta-card.resuelta      { opacity:.55; }
-.alerta-card.falso-positivo{ opacity:.4;  }
+.alerta-card.falso-positivo{ opacity:.4; }
 
 .card-header {
   padding:14px 18px; display:flex; align-items:center; gap:10px;
@@ -137,7 +141,6 @@ header h1 { font-size:17px; font-weight:600; display:flex; align-items:center; g
 .comentario-item { background:#0d1117; border-radius:6px; padding:8px 12px; margin-bottom:6px; }
 .comentario-ts   { font-size:11px; color:#8b949e; margin-bottom:3px; }
 .comentario-text { font-size:13px; color:#e6edf3; }
-
 .comentario-form { display:flex; gap:8px; margin-top:10px; }
 .comentario-form textarea {
   flex:1; background:#0d1117; border:1px solid #30363d; border-radius:6px;
@@ -148,9 +151,62 @@ header h1 { font-size:17px; font-weight:600; display:flex; align-items:center; g
 .btn-comentar {
   padding:8px 16px; background:#238636; color:#fff; border:none;
   border-radius:6px; font-size:13px; cursor:pointer; align-self:flex-end;
-  transition:background .15s;
 }
 .btn-comentar:hover { background:#2ea043; }
+
+/* ── Configuracion FIM ── */
+.config-section {
+  background:#161b22; border:1px solid #30363d; border-radius:10px;
+  padding:20px; margin-bottom:20px;
+}
+.config-title {
+  font-size:15px; font-weight:600; color:#e6edf3; margin-bottom:6px;
+  display:flex; align-items:center; gap:8px;
+}
+.config-desc { font-size:13px; color:#8b949e; margin-bottom:16px; }
+
+.carpeta-form { display:flex; gap:8px; margin-bottom:16px; }
+.carpeta-form input {
+  flex:1; background:#0d1117; border:1px solid #30363d; border-radius:6px;
+  color:#e6edf3; font-size:13px; padding:8px 12px;
+}
+.carpeta-form input:focus { outline:none; border-color:#58a6ff; }
+.carpeta-form input::placeholder { color:#8b949e; }
+.btn-agregar {
+  padding:8px 18px; background:#1f6feb; color:#fff; border:none;
+  border-radius:6px; font-size:13px; cursor:pointer; font-weight:600;
+  white-space:nowrap;
+}
+.btn-agregar:hover { background:#388bfd; }
+
+.carpetas-lista { display:flex; flex-direction:column; gap:8px; }
+.carpeta-item {
+  display:flex; align-items:center; justify-content:space-between;
+  background:#0d1117; border:1px solid #30363d; border-radius:8px;
+  padding:10px 14px;
+}
+.carpeta-path {
+  font-size:13px; color:#e6edf3; font-family:monospace;
+  display:flex; align-items:center; gap:8px;
+}
+.carpeta-path::before { content:"📁"; }
+.btn-eliminar {
+  padding:4px 12px; background:transparent; color:#f85149;
+  border:1px solid #f8514944; border-radius:6px; font-size:12px;
+  cursor:pointer; transition:all .15s;
+}
+.btn-eliminar:hover { background:#f8514922; }
+
+.carpetas-empty {
+  text-align:center; padding:30px; color:#8b949e; font-size:13px;
+  border:1px dashed #30363d; border-radius:8px;
+}
+
+.info-box {
+  background:#1f6feb22; border:1px solid #1f6feb44; border-radius:8px;
+  padding:12px 16px; font-size:12px; color:#8b949e; margin-top:16px;
+}
+.info-box strong { color:#58a6ff; }
 
 .empty { text-align:center; padding:50px; color:#8b949e; font-size:14px; }
 </style>
@@ -167,37 +223,70 @@ header h1 { font-size:17px; font-weight:600; display:flex; align-items:center; g
     <div class="live-stat">Escaneos: <span id="live-escaneos">-</span></div>
     <div class="live-stat">Ultimo: <span id="live-ultimo">-</span></div>
     <div class="live-stat">Proximo: <span id="live-proximo">-</span></div>
-    <button class="btn-pdf" id="btn-pdf" onclick="descargarPDF()">
-      📄 Exportar PDF
-    </button>
+    <button class="btn-pdf" id="btn-pdf" onclick="descargarPDF()">📄 Exportar PDF</button>
   </div>
 </header>
 
-<div class="container">
-  <div class="stats">
-    <div class="stat-card critical"><div class="label">🔴 Critical</div><div class="value" id="cnt-critical">0</div></div>
-    <div class="stat-card high">    <div class="label">🚨 High</div>    <div class="value" id="cnt-high">0</div></div>
-    <div class="stat-card medium">  <div class="label">⚠️ Medium</div>  <div class="value" id="cnt-medium">0</div></div>
-    <div class="stat-card low">     <div class="label">ℹ️ Low</div>     <div class="value" id="cnt-low">0</div></div>
-  </div>
+<!-- Tabs -->
+<div class="tabs">
+  <div class="tab active" data-tab="alertas">🚨 Alertas</div>
+  <div class="tab" data-tab="config">⚙️ Configuracion FIM</div>
+</div>
 
-  <div class="filtros">
-    <span>Severidad:</span>
-    <button class="btn-filtro active" data-sev="todas">Todas</button>
-    <button class="btn-filtro f-critical" data-sev="critical">Critical</button>
-    <button class="btn-filtro f-high"     data-sev="high">High</button>
-    <button class="btn-filtro f-medium"   data-sev="medium">Medium</button>
-    <button class="btn-filtro f-low"      data-sev="low">Low</button>
-    <span style="margin-left:12px">Estado:</span>
-    <button class="btn-filtro active" data-est="todos">Todos</button>
-    <button class="btn-filtro" data-est="nueva">Nueva</button>
-    <button class="btn-filtro" data-est="investigando">Investigando</button>
-    <button class="btn-filtro" data-est="resuelta">Resuelta</button>
-    <button class="btn-filtro" data-est="falso-positivo">Falso positivo</button>
-  </div>
+<!-- Tab Alertas -->
+<div class="tab-content active" id="tab-alertas">
+  <div class="container">
+    <div class="stats">
+      <div class="stat-card critical"><div class="label">🔴 Critical</div><div class="value" id="cnt-critical">0</div></div>
+      <div class="stat-card high">    <div class="label">🚨 High</div>    <div class="value" id="cnt-high">0</div></div>
+      <div class="stat-card medium">  <div class="label">⚠️ Medium</div>  <div class="value" id="cnt-medium">0</div></div>
+      <div class="stat-card low">     <div class="label">ℹ️ Low</div>     <div class="value" id="cnt-low">0</div></div>
+    </div>
 
-  <div class="alertas-lista" id="alertas-lista">
-    <div class="empty">Cargando alertas...</div>
+    <div class="filtros">
+      <span>Severidad:</span>
+      <button class="btn-filtro active" data-sev="todas">Todas</button>
+      <button class="btn-filtro f-critical" data-sev="critical">Critical</button>
+      <button class="btn-filtro f-high"     data-sev="high">High</button>
+      <button class="btn-filtro f-medium"   data-sev="medium">Medium</button>
+      <button class="btn-filtro f-low"      data-sev="low">Low</button>
+      <span style="margin-left:12px">Estado:</span>
+      <button class="btn-filtro active" data-est="todos">Todos</button>
+      <button class="btn-filtro" data-est="nueva">Nueva</button>
+      <button class="btn-filtro" data-est="investigando">Investigando</button>
+      <button class="btn-filtro" data-est="resuelta">Resuelta</button>
+      <button class="btn-filtro" data-est="falso-positivo">Falso positivo</button>
+    </div>
+
+    <div class="alertas-lista" id="alertas-lista">
+      <div class="empty">Cargando alertas...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Tab Configuracion FIM -->
+<div class="tab-content" id="tab-config">
+  <div class="container">
+    <div class="config-section">
+      <div class="config-title">📁 File Integrity Monitoring (FIM)</div>
+      <div class="config-desc">
+        Agregá carpetas para monitorear. El SIEM detectará cualquier acceso, modificación o eliminación de archivos y generará alertas automáticamente.
+      </div>
+
+      <div class="carpeta-form">
+        <input type="text" id="input-carpeta"
+          placeholder="Ej: C:\Users\JohnDoe\Documentos\Confidencial" />
+        <button class="btn-agregar" onclick="agregarCarpeta()">+ Agregar carpeta</button>
+      </div>
+
+      <div class="carpetas-lista" id="carpetas-lista">
+        <div class="carpetas-empty">No hay carpetas monitoreadas todavía.</div>
+      </div>
+
+      <div class="info-box">
+        <strong>¿Cómo funciona?</strong> Al agregar una carpeta, el SIEM aplica automáticamente reglas de auditoría SACL en Windows y comienza a detectar eventos de acceso (Event ID 4663), eliminación (4660) y apertura de handles (4656). Las alertas aparecen en la pestaña Alertas clasificadas como HIGH o CRITICAL.
+      </div>
+    </div>
   </div>
 </div>
 
@@ -205,6 +294,17 @@ header h1 { font-size:17px; font-weight:600; display:flex; align-items:center; g
 let todasAlertas = [];
 let filtroSev = "todas";
 let filtroEst = "todos";
+
+// ── Tabs ──
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+    if (tab.dataset.tab === 'config') cargarConfig();
+  });
+});
 
 // ── Filtros ──
 document.querySelectorAll('[data-sev]').forEach(btn => {
@@ -224,16 +324,14 @@ document.querySelectorAll('[data-est]').forEach(btn => {
   });
 });
 
-// ── Estado SIEM en vivo ──
+// ── Estado SIEM ──
 async function actualizarEstadoSiem() {
   try {
     const res  = await fetch('/api/estado-siem');
     const data = await res.json();
-
     const indicador = document.getElementById('live-indicator');
     const pulso     = document.getElementById('live-pulse');
     const texto     = document.getElementById('live-texto');
-
     if (data.estado === "activo") {
       indicador.className = 'live-indicator';
       pulso.className     = 'pulse';
@@ -243,18 +341,15 @@ async function actualizarEstadoSiem() {
       pulso.className     = 'pulse off';
       texto.textContent   = 'DETENIDO';
     }
-
     document.getElementById('live-escaneos').textContent = data.total_escaneos || '0';
-    document.getElementById('live-ultimo').textContent   = data.ultimo
-      ? data.ultimo.split(' ')[1] : '-';
+    document.getElementById('live-ultimo').textContent   = data.ultimo ? data.ultimo.split(' ')[1] : '-';
     document.getElementById('live-proximo').textContent  = data.proximo || '-';
-
   } catch(e) {
     document.getElementById('live-texto').textContent = 'Sin conexion';
   }
 }
 
-// ── Exportar PDF ──
+// ── PDF ──
 async function descargarPDF() {
   const btn = document.getElementById('btn-pdf');
   btn.classList.add('loading');
@@ -273,6 +368,64 @@ async function descargarPDF() {
   } finally {
     btn.classList.remove('loading');
     btn.innerHTML = '📄 Exportar PDF';
+  }
+}
+
+// ── Config FIM ──
+async function cargarConfig() {
+  try {
+    const res     = await fetch('/api/config');
+    const config  = await res.json();
+    const carpetas= config.carpetas_monitoreadas || [];
+    const lista   = document.getElementById('carpetas-lista');
+
+    if (!carpetas.length) {
+      lista.innerHTML = '<div class="carpetas-empty">No hay carpetas monitoreadas todavía.</div>';
+      return;
+    }
+
+    lista.innerHTML = carpetas.map(c => `
+      <div class="carpeta-item">
+        <span class="carpeta-path">${c}</span>
+        <button class="btn-eliminar" onclick="eliminarCarpeta('${c.replace(/\\/g, '\\\\')}')">Eliminar</button>
+      </div>
+    `).join('');
+  } catch(e) {
+    console.error('Error cargando config:', e);
+  }
+}
+
+async function agregarCarpeta() {
+  const input   = document.getElementById('input-carpeta');
+  const carpeta = input.value.trim();
+  if (!carpeta) return;
+
+  try {
+    const res = await fetch('/api/config/carpeta', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({carpeta})
+    });
+    const data = await res.json();
+    if (data.ok) {
+      input.value = '';
+      cargarConfig();
+    }
+  } catch(e) {
+    alert('Error agregando carpeta: ' + e.message);
+  }
+}
+
+async function eliminarCarpeta(carpeta) {
+  try {
+    await fetch('/api/config/carpeta/eliminar', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({carpeta})
+    });
+    cargarConfig();
+  } catch(e) {
+    alert('Error eliminando carpeta: ' + e.message);
   }
 }
 
@@ -394,7 +547,7 @@ async function cargarAlertas() {
 // ── Init ──
 cargarAlertas();
 actualizarEstadoSiem();
-setInterval(cargarAlertas,       30000);
+setInterval(cargarAlertas,        30000);
 setInterval(actualizarEstadoSiem, 15000);
 </script>
 </body>

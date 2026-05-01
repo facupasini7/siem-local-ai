@@ -8,6 +8,7 @@ LOG_FILE     = r"C:\siem-claude\alertas.jsonl"
 TICKETS_FILE = r"C:\siem-claude\tickets.json"
 SIEM_LOG     = r"C:\siem-claude\siem_output.log"
 PDF_OUTPUT   = r"C:\siem-claude\reporte_siem.pdf"
+CONFIG_FILE  = r"C:\siem-claude\config.json"
 
 # ─── Helpers ─────────────────────────────────────────────────
 
@@ -37,6 +38,16 @@ def guardar_tickets(tickets):
     with open(TICKETS_FILE, "w", encoding="utf-8") as f:
         json.dump(tickets, f, ensure_ascii=False, indent=2)
 
+def leer_config():
+    if not os.path.exists(CONFIG_FILE):
+        return {"carpetas_monitoreadas": []}
+    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def guardar_config(config):
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(config, f, ensure_ascii=False, indent=2)
+
 def combinar(alertas, tickets):
     resultado = []
     for a in alertas:
@@ -52,7 +63,6 @@ def combinar(alertas, tickets):
 def leer_estado_siem():
     if not os.path.exists(SIEM_LOG):
         return {"ultimo": None, "proximo": None, "total_escaneos": 0, "estado": "detenido"}
-
     try:
         with open(SIEM_LOG, "r", encoding="utf-16", errors="replace") as f:
             lineas = f.readlines()
@@ -113,7 +123,6 @@ def generar_pdf(alertas, tickets):
     GREEN  = colors.HexColor("#3fb950")
     GRAY   = colors.HexColor("#8b949e")
     WHITE  = colors.white
-
     SEV_COLOR = {"critical": RED, "high": ORANGE, "medium": YELLOW, "low": GREEN}
 
     titulo_style = ParagraphStyle("titulo", fontSize=22, fontName="Helvetica-Bold",
@@ -127,7 +136,6 @@ def generar_pdf(alertas, tickets):
     footer_style = ParagraphStyle("footer", fontSize=7,  fontName="Helvetica-Oblique",
                                   textColor=GRAY, alignment=TA_CENTER, spaceBefore=8)
 
-    # ── Encabezado ──
     story.append(Paragraph("SIEM Dashboard — Reporte de Seguridad", titulo_style))
     story.append(Paragraph(
         f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}  |  "
@@ -137,7 +145,6 @@ def generar_pdf(alertas, tickets):
     story.append(HRFlowable(width="100%", thickness=1, color=ACCENT))
     story.append(Spacer(1, 14))
 
-    # ── Resumen ejecutivo ──
     cnt = {"critical": 0, "high": 0, "medium": 0, "low": 0}
     combined = combinar(alertas, tickets)
     for a in combined:
@@ -151,15 +158,13 @@ def generar_pdf(alertas, tickets):
     nuevas           = sum(1 for a in combined if a.get("estado") == "nueva")
 
     story.append(Paragraph("Resumen Ejecutivo", sec_style))
-
     data_resumen = [
-        ["Severidad", "Cantidad", "Estado",            "Cantidad"],
-        ["CRITICAL",  str(cnt["critical"]), "Resueltas",          str(resueltas)],
-        ["HIGH",      str(cnt["high"]),     "Falsos positivos",   str(falsos_positivos)],
-        ["MEDIUM",    str(cnt["medium"]),   "En investigacion",   str(investigando)],
-        ["LOW",       str(cnt["low"]),      "Nuevas",             str(nuevas)],
+        ["Severidad", "Cantidad", "Estado",           "Cantidad"],
+        ["CRITICAL",  str(cnt["critical"]), "Resueltas",         str(resueltas)],
+        ["HIGH",      str(cnt["high"]),     "Falsos positivos",  str(falsos_positivos)],
+        ["MEDIUM",    str(cnt["medium"]),   "En investigacion",  str(investigando)],
+        ["LOW",       str(cnt["low"]),      "Nuevas",            str(nuevas)],
     ]
-
     t = Table(data_resumen, colWidths=[4*cm, 3*cm, 5*cm, 3*cm])
     t.setStyle(TableStyle([
         ("BACKGROUND",     (0, 0), (-1, 0),  ACCENT),
@@ -180,18 +185,16 @@ def generar_pdf(alertas, tickets):
     story.append(t)
     story.append(Spacer(1, 16))
     story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#30363d")))
-
-    # ── Detalle de alertas ──
     story.append(Paragraph("Detalle de Alertas", sec_style))
 
     if not combined:
         story.append(Paragraph("Sin alertas registradas.", body_style))
     else:
         for a in combined:
-            sev    = a.get("severity", "low")
-            color  = SEV_COLOR.get(sev, GREEN)
-            estado = a.get("estado", "nueva").upper()
-            ts     = a.get("timestamp", "-")
+            sev   = a.get("severity", "low")
+            color = SEV_COLOR.get(sev, GREEN)
+            estado= a.get("estado", "nueva").upper()
+            ts    = a.get("timestamp", "-")
 
             h_sev     = ParagraphStyle("hs",  fontSize=9, fontName="Helvetica-Bold", textColor=WHITE)
             h_summary = ParagraphStyle("hsu", fontSize=9, fontName="Helvetica",      textColor=WHITE)
@@ -214,28 +217,17 @@ def generar_pdf(alertas, tickets):
             story.append(th)
 
             body_rows = [["Accion recomendada:", a.get("accion_recomendada", "-")]]
-
             for ev in a.get("events", []):
                 body_rows.append([
                     f"ID {ev.get('id', '-')}",
                     f"{ev.get('descripcion', '-')} — Riesgo: {ev.get('riesgo', '-')}"
                 ])
-
             for c in a.get("comentarios", []):
-                body_rows.append([
-                    f"Nota ({c.get('ts', '')})",
-                    c.get("texto", "-")
-                ])
+                body_rows.append([f"Nota ({c.get('ts', '')})", c.get("texto", "-")])
 
-            col_style = ParagraphStyle("cs", fontSize=8, fontName="Helvetica-Bold",
-                                       textColor=GRAY)
-            val_style = ParagraphStyle("vs", fontSize=8, fontName="Helvetica",
-                                       textColor=colors.black)
-
-            tb_data = [
-                [Paragraph(r[0], col_style), Paragraph(r[1], val_style)]
-                for r in body_rows
-            ]
+            col_style = ParagraphStyle("cs", fontSize=8, fontName="Helvetica-Bold", textColor=GRAY)
+            val_style = ParagraphStyle("vs", fontSize=8, fontName="Helvetica", textColor=colors.black)
+            tb_data   = [[Paragraph(r[0], col_style), Paragraph(r[1], val_style)] for r in body_rows]
             tb = Table(tb_data, colWidths=[3.5*cm, 13.5*cm])
             tb.setStyle(TableStyle([
                 ("GRID",          (0, 0), (-1, -1), 0.3, colors.HexColor("#e0e0e0")),
@@ -248,7 +240,6 @@ def generar_pdf(alertas, tickets):
             story.append(tb)
             story.append(Spacer(1, 8))
 
-    # ── Pie ──
     story.append(Spacer(1, 10))
     story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#30363d")))
     story.append(Paragraph(
@@ -256,7 +247,6 @@ def generar_pdf(alertas, tickets):
         f"Ollama llama3.1:8b — {datetime.now().strftime('%d/%m/%Y')}",
         footer_style
     ))
-
     doc.build(story)
     return PDF_OUTPUT
 
@@ -282,7 +272,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(200)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
 
@@ -297,6 +287,9 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/estado-siem":
             self.send_json(leer_estado_siem())
 
+        elif path == "/api/config":
+            self.send_json(leer_config())
+
         elif path == "/api/pdf":
             try:
                 alertas = leer_alertas()
@@ -306,8 +299,7 @@ class Handler(BaseHTTPRequestHandler):
                     data = f.read()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/pdf")
-                self.send_header("Content-Disposition",
-                                 "attachment; filename=reporte_siem.pdf")
+                self.send_header("Content-Disposition", "attachment; filename=reporte_siem.pdf")
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
@@ -353,6 +345,29 @@ class Handler(BaseHTTPRequestHandler):
             })
             guardar_tickets(tickets)
             self.send_json({"ok": True})
+
+        elif path == "/api/config/carpeta":
+            carpeta = body.get("carpeta", "").strip()
+            if not carpeta:
+                self.send_json({"ok": False, "error": "carpeta vacia"}, 400)
+                return
+            config   = leer_config()
+            carpetas = config.get("carpetas_monitoreadas", [])
+            if carpeta not in carpetas:
+                carpetas.append(carpeta)
+                config["carpetas_monitoreadas"] = carpetas
+                guardar_config(config)
+            self.send_json({"ok": True, "carpetas": carpetas})
+
+        elif path == "/api/config/carpeta/eliminar":
+            carpeta = body.get("carpeta", "").strip()
+            config  = leer_config()
+            carpetas = config.get("carpetas_monitoreadas", [])
+            if carpeta in carpetas:
+                carpetas.remove(carpeta)
+                config["carpetas_monitoreadas"] = carpetas
+                guardar_config(config)
+            self.send_json({"ok": True, "carpetas": carpetas})
 
         else:
             self.send_response(404)
