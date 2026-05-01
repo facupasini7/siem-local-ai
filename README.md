@@ -7,6 +7,8 @@ SIEM (Security Information and Event Management) local, 100% privado, potenciado
 - Monitorea eventos del **Windows Event Viewer** en tiempo real (System, Application, Security)
 - Analiza los eventos con **IA local** (Ollama + LLaMA 3.1 8b) y clasifica severidad
 - Detecta automáticamente eventos críticos: creación de usuarios, cambios de privilegios, fallos de autenticación
+- **File Integrity Monitoring (FIM)** — monitorea carpetas específicas y detecta accesos, modificaciones y eliminaciones de archivos
+- Configurable desde el dashboard — agregá y quitá carpetas a monitorear sin tocar código
 - Muestra todo en un **dashboard web** con tema oscuro
 - Sistema de **gestión de tickets** con estados y comentarios
 - **Notificaciones nativas de Windows** ante alertas HIGH o CRITICAL
@@ -33,7 +35,7 @@ SIEM (Security Information and Event Management) local, 100% privado, potenciado
 
 1. Cloná el repo
 \\\
-git clone https://github.com/TU_USUARIO/siem-local-ai
+git clone https://github.com/facupasini7/siem-local-ai
 cd siem-local-ai
 \\\
 
@@ -72,6 +74,17 @@ http://localhost:8080
 | 4672 | Privilegios especiales asignados | HIGH |
 | 4726 | Usuario eliminado | CRITICAL |
 | 4728 | Usuario agregado a grupo global | CRITICAL |
+| 4663 | Acceso/modificación en carpeta monitoreada | HIGH |
+| 4660 | Eliminación en carpeta monitoreada | CRITICAL |
+| 4656 | Apertura de archivo en carpeta monitoreada | MEDIUM |
+
+## File Integrity Monitoring (FIM)
+
+Desde la pestaña **⚙️ Configuracion FIM** del dashboard podés agregar y quitar carpetas a monitorear sin tocar código. El SIEM aplica automáticamente reglas SACL en Windows y detecta:
+
+- Quién accedió al archivo (usuario)
+- Qué proceso lo abrió
+- Qué tipo de operación se realizó (lectura, escritura, eliminación)
 
 ## Estructura del proyecto
 
@@ -80,6 +93,7 @@ siem-local-ai/
 ├── siem.py          # Motor de monitoreo y análisis con IA
 ├── dashboard.py     # Servidor web del dashboard
 ├── index.html       # Frontend del dashboard
+├── config.json      # Carpetas monitoreadas por FIM
 └── README.md
 \\\
 
