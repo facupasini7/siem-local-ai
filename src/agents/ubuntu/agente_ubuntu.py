@@ -11,7 +11,15 @@ AGENTE_NOMBRE   = "ubuntu-agente"
 VENTANA_MINUTOS = 5
 IP_LOCAL        = "192.168.1.7"
 LOG_FILE        = "/home/facu/siem-agente/agente.log"
+CONFIG_FILE     = "/home/facu/siem-agente/config.json"
 # ─────────────────────────────────────────────────────────────
+
+def leer_config() -> dict:
+    try:
+        with open(CONFIG_FILE, "r") as f:
+            return json.load(f)
+    except:
+        return {"api_key": ""}
 
 def log(msg: str):
     ts  = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -72,11 +80,15 @@ def get_journald_logs(since: datetime) -> str:
 
 def enviar_al_siem(logs: str) -> bool:
     """Manda los logs al SIEM central."""
-    payload = json.dumps({
+    body = {
         "agente": AGENTE_NOMBRE,
         "ip":     IP_LOCAL,
         "logs":   logs
-    }).encode("utf-8")
+    }
+    api_key = leer_config().get("api_key", "")
+    if api_key:
+        body["api_key"] = api_key
+    payload = json.dumps(body).encode("utf-8")
 
     try:
         req = urllib.request.Request(

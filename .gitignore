@@ -1,20 +1,35 @@
-﻿# Datos sensibles — nunca subir
-alertas.jsonl
-tickets.json
-siem_output.log
-reporte_siem.pdf
+# Runtime data — never commit
+data/
+logs/
+
+# Keep directory placeholders
+!data/.gitkeep
+!logs/.gitkeep
 
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
+*.pyd
+.Python
 
-# Windows
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
 Thumbs.db
 desktop.ini
 
+# Secrets / local config
 config.json
-
-agente_windows.log
-evento_externos.jsonl
-agente.log
+*.key
+*.pem
