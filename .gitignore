@@ -17,3 +17,4 @@ config.json
 
 agente_windows.log
 evento_externos.jsonl
+agente.log
