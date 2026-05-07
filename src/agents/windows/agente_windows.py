@@ -3,14 +3,18 @@ import json
 import urllib.request
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
 
 # ─── CONFIGURACION ───────────────────────────────────────────
+# Raíz del proyecto: src/agents/windows/ → src/agents/ → src/ → raíz
+_ROOT            = Path(__file__).parent.parent.parent.parent
+
 SIEM_URL         = "http://localhost:8080/api/eventos-externos"
 AGENTE_NOMBRE    = "windows-agente"
 IP_LOCAL         = "192.168.1.48"
 VENTANA_MINUTOS  = 5
-AGENTE_LOG       = r"C:\siem-claude\agente_windows.log"
-CONFIG_FILE      = r"C:\siem-claude\config.json"
+AGENTE_LOG       = _ROOT / "logs" / "agente_windows.log"
+CONFIG_FILE      = _ROOT / "data" / "config.json"
 
 EVENTOS_IGNORAR  = [10010, 10016, 16384, 16394, 7040, 7045, 1014]
 # ─────────────────────────────────────────────────────────────
@@ -29,7 +33,7 @@ def leer_config() -> dict:
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     except:
-        return {"carpetas_monitoreadas": []}
+        return {"carpetas_monitoreadas": [], "api_key": ""}
 
 def aplicar_sacl(carpeta: str):
     cmd = [
@@ -160,11 +164,15 @@ def get_events_since(since: datetime) -> str:
     return ""
 
 def enviar_al_siem(logs: str) -> bool:
-    payload = json.dumps({
+    body = {
         "agente": AGENTE_NOMBRE,
         "ip":     IP_LOCAL,
         "logs":   logs
-    }).encode("utf-8")
+    }
+    api_key = leer_config().get("api_key", "")
+    if api_key:
+        body["api_key"] = api_key
+    payload = json.dumps(body).encode("utf-8")
     try:
         req = urllib.request.Request(
             SIEM_URL, data=payload,

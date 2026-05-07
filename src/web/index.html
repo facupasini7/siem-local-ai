@@ -1,0 +1,1621 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIEM — Dashboard</title>
+<style>
+/* ── Reset y variables ───────────────────────────────────── */
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --bg:        #0d1117;
+  --bg-card:   #161b22;
+  --bg-hover:  #1c2128;
+  --bg-input:  #010409;
+  --border:    #30363d;
+  --border-sub:#21262d;
+  --text:      #e6edf3;
+  --text-2:    #8b949e;
+  --text-3:    #484f58;
+  --blue:      #58a6ff;
+  --blue-btn:  #1f6feb;
+  --green:     #3fb950;
+  --yellow:    #e3b341;
+  --orange:    #f0883e;
+  --red:       #f85149;
+  --purple:    #bc8cff;
+  --sidebar:   220px;
+  --topbar:    54px;
+  --radius:    8px;
+  --shadow:    0 4px 24px rgba(0,0,0,.4);
+}
+body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text);
+       font-size:14px; line-height:1.5; overflow-x:hidden; }
+a { color:var(--blue); text-decoration:none; }
+input,textarea,select {
+  background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius);
+  color:var(--text); font-family:inherit; font-size:13px; padding:8px 12px;
+  outline:none; transition:border-color .15s;
+}
+input:focus,textarea:focus,select:focus { border-color:var(--blue); }
+input::placeholder,textarea::placeholder { color:var(--text-3); }
+button { cursor:pointer; font-family:inherit; }
+
+/* ── Cambio de contraseña forzado ────────────────────────── */
+#force-pw {
+  display:none; position:fixed; inset:0; z-index:9999;
+  background: radial-gradient(ellipse at 60% 40%, #1a2744 0%, var(--bg) 65%);
+  align-items:center; justify-content:center;
+}
+#force-pw.show { display:flex; }
+.force-pw-card {
+  background:var(--bg-card); border:1px solid var(--border); border-radius:14px;
+  padding:44px 40px; width:420px; max-width:95vw; box-shadow:var(--shadow);
+  animation: fadeUp .4s ease;
+}
+.force-pw-icon { font-size:38px; text-align:center; margin-bottom:10px; }
+.force-pw-title { font-size:20px; font-weight:700; text-align:center; margin-bottom:6px; }
+.force-pw-sub { font-size:13px; color:var(--text-2); text-align:center; margin-bottom:28px; }
+.force-pw-alert {
+  padding:10px 14px; background:#e3b34118; border:1px solid #e3b34144;
+  border-radius:var(--radius); color:var(--yellow); font-size:13px; margin-bottom:20px;
+}
+.force-pw-error {
+  margin-top:12px; padding:10px 14px; background:#f8514918; border:1px solid #f8514944;
+  border-radius:var(--radius); color:var(--red); font-size:13px; display:none;
+}
+
+/* ── Login ───────────────────────────────────────────────── */
+#login-page {
+  min-height:100vh; display:flex; align-items:center; justify-content:center;
+  background: radial-gradient(ellipse at 60% 40%, #1a2744 0%, var(--bg) 65%);
+}
+.login-card {
+  background:var(--bg-card); border:1px solid var(--border); border-radius:14px;
+  padding:48px 44px; width:400px; max-width:95vw; box-shadow:var(--shadow);
+  animation: fadeUp .4s ease;
+}
+@keyframes fadeUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:none; } }
+.login-logo { font-size:44px; text-align:center; margin-bottom:12px; }
+.login-title { font-size:22px; font-weight:700; text-align:center; color:var(--text); margin-bottom:4px; }
+.login-subtitle { font-size:13px; color:var(--text-2); text-align:center; margin-bottom:32px; }
+.login-field { margin-bottom:14px; }
+.login-field label { display:block; font-size:12px; color:var(--text-2);
+                     text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px; }
+.login-field input { width:100%; }
+.login-btn {
+  width:100%; padding:11px; background:var(--blue-btn); color:#fff; border:none;
+  border-radius:var(--radius); font-size:14px; font-weight:600; margin-top:8px;
+  transition:background .15s; letter-spacing:.3px;
+}
+.login-btn:hover { background:#388bfd; }
+.login-btn:disabled { background:#444; cursor:wait; }
+.login-error {
+  margin-top:14px; padding:10px 14px; background:#f8514918; border:1px solid #f8514944;
+  border-radius:var(--radius); color:var(--red); font-size:13px; display:none;
+}
+
+/* ── App layout ──────────────────────────────────────────── */
+#app { display:none; }
+
+.sidebar {
+  position:fixed; top:0; left:0; bottom:0; width:var(--sidebar);
+  background:var(--bg-card); border-right:1px solid var(--border);
+  display:flex; flex-direction:column; z-index:200;
+}
+.sidebar-logo {
+  padding:20px 20px 16px; font-size:15px; font-weight:700;
+  color:var(--blue); border-bottom:1px solid var(--border);
+  display:flex; align-items:center; gap:9px;
+}
+.sidebar-logo .shield { font-size:22px; }
+
+nav { flex:1; padding:10px 0; overflow-y:auto; }
+.nav-item {
+  display:flex; align-items:center; gap:11px; padding:10px 20px;
+  color:var(--text-2); font-size:13px; font-weight:500;
+  border-left:3px solid transparent; transition:all .15s; cursor:pointer;
+}
+.nav-item:hover { background:var(--bg-hover); color:var(--text); }
+.nav-item.active { color:var(--blue); border-left-color:var(--blue); background:rgba(88,166,255,.08); }
+.nav-item .icon { font-size:16px; width:20px; text-align:center; }
+.nav-badge {
+  margin-left:auto; background:var(--red); color:#fff;
+  font-size:10px; font-weight:700; padding:2px 7px; border-radius:20px;
+  min-width:20px; text-align:center;
+}
+.nav-sep { height:1px; background:var(--border); margin:8px 16px; }
+
+.sidebar-user {
+  padding:14px 16px; border-top:1px solid var(--border);
+  display:flex; align-items:center; gap:10px;
+}
+.user-avatar {
+  width:34px; height:34px; border-radius:50%;
+  background:linear-gradient(135deg,var(--blue-btn),var(--purple));
+  display:flex; align-items:center; justify-content:center;
+  font-size:14px; font-weight:700; color:#fff; flex-shrink:0;
+}
+.user-info { flex:1; min-width:0; }
+.user-name { font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.user-rol  { font-size:11px; color:var(--text-2); }
+.btn-logout {
+  background:none; border:none; color:var(--text-3); font-size:16px; padding:4px;
+  border-radius:4px; transition:color .15s; flex-shrink:0;
+}
+.btn-logout:hover { color:var(--red); }
+
+.main-wrap { margin-left:var(--sidebar); min-height:100vh; display:flex; flex-direction:column; }
+
+/* ── Topbar ──────────────────────────────────────────────── */
+.topbar {
+  height:var(--topbar); background:var(--bg-card); border-bottom:1px solid var(--border);
+  display:flex; align-items:center; padding:0 24px; gap:20px; position:sticky; top:0; z-index:100;
+}
+.topbar-title { font-size:15px; font-weight:600; flex:1; }
+.live-dot { width:8px; height:8px; border-radius:50%; background:var(--green);
+            animation:pulse 2s infinite; flex-shrink:0; }
+.live-dot.off { background:var(--red); animation:none; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.85)} }
+.live-label { font-size:12px; font-weight:600; color:var(--green); }
+.live-label.off { color:var(--red); }
+.topbar-stat { font-size:12px; color:var(--text-2); white-space:nowrap; }
+.topbar-stat b { color:var(--text); font-weight:600; }
+.btn-pdf {
+  display:flex; align-items:center; gap:6px; background:var(--green); color:#fff;
+  border:none; padding:7px 14px; border-radius:var(--radius); font-size:12px;
+  font-weight:600; transition:opacity .15s; white-space:nowrap;
+}
+.btn-pdf:hover { opacity:.85; }
+
+/* ── Contenido de páginas ─────────────────────────────────── */
+.page { display:none; padding:24px 28px; }
+.page.active { display:block; }
+.page-header { margin-bottom:22px; }
+.page-header h2 { font-size:18px; font-weight:700; }
+.page-header p  { font-size:13px; color:var(--text-2); margin-top:3px; }
+
+/* ── Stats grid ──────────────────────────────────────────── */
+.stats-grid { display:grid; gap:12px; margin-bottom:20px; }
+.stats-grid.cols4 { grid-template-columns:repeat(4,1fr); }
+.stats-grid.cols2 { grid-template-columns:repeat(2,1fr); }
+.stat-card {
+  background:var(--bg-card); border:1px solid var(--border); border-radius:10px;
+  padding:16px 18px; display:flex; align-items:center; gap:14px;
+}
+.stat-icon { font-size:26px; }
+.stat-info .label { font-size:11px; color:var(--text-2); text-transform:uppercase; letter-spacing:.5px; }
+.stat-info .value { font-size:26px; font-weight:700; line-height:1.1; }
+.stat-card.c-critical .value { color:var(--red); }
+.stat-card.c-high     .value { color:var(--orange); }
+.stat-card.c-medium   .value { color:var(--yellow); }
+.stat-card.c-low      .value { color:var(--green); }
+.stat-card.c-nueva         .value { color:var(--blue); }
+.stat-card.c-investigando  .value { color:var(--yellow); }
+.stat-card.c-resuelta      .value { color:var(--green); }
+.stat-card.c-falso         .value { color:var(--text-2); }
+
+/* ── Overview: Agentes strip ─────────────────────────────── */
+.section-title { font-size:13px; font-weight:600; color:var(--text-2);
+                 text-transform:uppercase; letter-spacing:.5px; margin-bottom:12px; }
+.agentes-strip { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:24px; }
+.agente-mini {
+  background:var(--bg-card); border:1px solid var(--border); border-radius:10px;
+  padding:12px 16px; display:flex; align-items:center; gap:12px; min-width:200px;
+}
+.agente-mini-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.agente-mini-dot.on  { background:var(--green); box-shadow:0 0 6px var(--green); }
+.agente-mini-dot.off { background:var(--text-3); }
+.agente-mini-info .name { font-size:13px; font-weight:600; }
+.agente-mini-info .meta { font-size:11px; color:var(--text-2); }
+
+/* ── Recent alerts (overview) ────────────────────────────── */
+.recent-list { display:flex; flex-direction:column; gap:8px; }
+.recent-item {
+  background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius);
+  border-left:3px solid var(--border); padding:10px 14px;
+  display:flex; align-items:center; gap:10px;
+}
+.recent-item.critical { border-left-color:var(--red); }
+.recent-item.high     { border-left-color:var(--orange); }
+.recent-item.medium   { border-left-color:var(--yellow); }
+.recent-item.low      { border-left-color:var(--green); }
+.recent-summary { flex:1; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.recent-ts { font-size:11px; color:var(--text-2); white-space:nowrap; }
+
+/* ── Badges ──────────────────────────────────────────────── */
+.badge {
+  font-size:11px; font-weight:700; padding:3px 9px; border-radius:20px;
+  text-transform:uppercase; letter-spacing:.5px; white-space:nowrap; display:inline-block;
+}
+.badge.critical { background:#f8514920; color:var(--red);    border:1px solid #f8514940; }
+.badge.high     { background:#f0883e20; color:var(--orange); border:1px solid #f0883e40; }
+.badge.medium   { background:#e3b34120; color:var(--yellow); border:1px solid #e3b34140; }
+.badge.low      { background:#3fb95020; color:var(--green);  border:1px solid #3fb95040; }
+.badge.admin    { background:#bc8cff20; color:var(--purple); border:1px solid #bc8cff40; }
+.badge.analista { background:#58a6ff20; color:var(--blue);   border:1px solid #58a6ff40; }
+
+.badge-estado {
+  font-size:11px; padding:3px 9px; border-radius:20px; border:1px solid var(--border);
+  color:var(--text-2); white-space:nowrap; display:inline-block;
+}
+.badge-estado.nueva          { border-color:var(--blue);   color:var(--blue); }
+.badge-estado.investigando   { border-color:var(--yellow); color:var(--yellow); }
+.badge-estado.resuelta       { border-color:var(--green);  color:var(--green); }
+.badge-estado.falso-positivo { border-color:var(--text-2); color:var(--text-2); }
+
+.badge-ocurrencias {
+  font-size:11px; font-weight:700; padding:3px 8px; border-radius:20px;
+  background:#f0883e22; color:#f0883e; border:1px solid #f0883e55;
+  white-space:nowrap; display:inline-block;
+}
+
+/* ── Filtros ─────────────────────────────────────────────── */
+.filtros-bar {
+  display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; align-items:center;
+  background:var(--bg-card); border:1px solid var(--border); border-radius:10px;
+  padding:12px 14px;
+}
+.filtros-bar .sep { width:1px; height:20px; background:var(--border); margin:0 4px; }
+.filtros-bar .label { font-size:12px; color:var(--text-2); }
+.btn-filtro {
+  font-size:12px; padding:5px 13px; border-radius:20px;
+  border:1px solid var(--border); background:transparent; color:var(--text-2);
+  transition:all .15s;
+}
+.btn-filtro:hover,
+.btn-filtro.active     { background:var(--bg-hover); color:var(--text); border-color:var(--blue); }
+.btn-filtro.fc-critical.active { border-color:var(--red);    color:var(--red); }
+.btn-filtro.fc-high.active     { border-color:var(--orange); color:var(--orange); }
+.btn-filtro.fc-medium.active   { border-color:var(--yellow); color:var(--yellow); }
+.btn-filtro.fc-low.active      { border-color:var(--green);  color:var(--green); }
+
+.search-input { flex:1; min-width:160px; max-width:260px; padding:5px 12px; font-size:12px; }
+
+/* ── Alert cards ─────────────────────────────────────────── */
+.alertas-lista { display:flex; flex-direction:column; gap:8px; }
+.alerta-card {
+  background:var(--bg-card); border:1px solid var(--border); border-radius:10px;
+  border-left:4px solid var(--border); overflow:hidden;
+  transition:border-color .15s;
+}
+.alerta-card.critical { border-left-color:var(--red); }
+.alerta-card.high     { border-left-color:var(--orange); }
+.alerta-card.medium   { border-left-color:var(--yellow); }
+.alerta-card.low      { border-left-color:var(--green); }
+.alerta-card.resuelta      { opacity:.55; }
+.alerta-card.falso-positivo{ opacity:.4; }
+
+.card-header {
+  padding:12px 16px; display:flex; align-items:center; gap:10px;
+  cursor:pointer; user-select:none; transition:background .1s;
+}
+.card-header:hover { background:var(--bg-hover); }
+.card-summary { flex:1; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.card-meta { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.card-agent { font-size:11px; color:var(--text-2); background:var(--bg-hover);
+              padding:2px 8px; border-radius:20px; border:1px solid var(--border); }
+.card-ts { font-size:11px; color:var(--text-2); }
+
+.card-body { display:none; padding:0 16px 16px; border-top:1px solid var(--border-sub); }
+.card-body.open { display:block; }
+.card-accion {
+  font-size:13px; color:var(--text-2); margin:12px 0 12px;
+  padding:10px 14px; background:var(--bg); border-radius:var(--radius);
+  border-left:3px solid var(--blue);
+}
+.card-accion strong { color:var(--blue); }
+.eventos-lista { margin-bottom:14px; }
+.evento-item { font-size:12px; color:var(--text-2); display:flex; gap:10px; margin-bottom:4px; align-items:baseline; }
+.ev-id { color:var(--blue); font-weight:600; min-width:56px; font-family:monospace; }
+
+.gestion { display:flex; gap:6px; margin-bottom:14px; align-items:center; flex-wrap:wrap; }
+.gestion-label { font-size:12px; color:var(--text-2); }
+.btn-estado {
+  font-size:12px; padding:5px 11px; border-radius:6px;
+  border:1px solid var(--border); background:transparent; color:var(--text-2);
+  transition:all .15s;
+}
+.btn-estado:hover { background:var(--bg-hover); color:var(--text); }
+.btn-estado.active.nueva          { background:#58a6ff18; color:var(--blue);   border-color:var(--blue); }
+.btn-estado.active.investigando   { background:#e3b34118; color:var(--yellow); border-color:var(--yellow); }
+.btn-estado.active.resuelta       { background:#3fb95018; color:var(--green);  border-color:var(--green); }
+.btn-estado.active.falso-positivo { background:#8b949e18; color:var(--text-2); border-color:var(--text-2); }
+
+.comments-title { font-size:11px; color:var(--text-2); text-transform:uppercase;
+                  letter-spacing:.5px; margin-bottom:8px; }
+.comment-item { background:var(--bg); border-radius:6px; padding:8px 12px; margin-bottom:6px; }
+.comment-ts   { font-size:11px; color:var(--text-2); margin-bottom:2px; }
+.comment-text { font-size:13px; }
+.comment-form { display:flex; gap:8px; margin-top:10px; }
+.comment-form textarea { flex:1; height:54px; resize:none; font-size:13px; }
+.btn-comment {
+  padding:8px 14px; background:#238636; color:#fff; border:none;
+  border-radius:var(--radius); font-size:13px; align-self:flex-end; transition:opacity .15s;
+}
+.btn-comment:hover { opacity:.85; }
+
+/* ── Agentes page ─────────────────────────────────────────── */
+.agentes-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; }
+.agente-card {
+  background:var(--bg-card); border:1px solid var(--border); border-radius:10px;
+  overflow:hidden; transition:border-color .2s;
+}
+.agente-card:hover { border-color:var(--text-3); }
+.agente-card-top { height:4px; }
+.agente-card-top.activo   { background:var(--green); }
+.agente-card-top.pendiente{ background:var(--yellow); }
+.agente-card-top.inactivo { background:var(--text-3); }
+.agente-card-body { padding:16px; }
+.agente-card-name { font-size:15px; font-weight:700; margin-bottom:6px;
+                    display:flex; align-items:center; gap:8px; }
+.agente-card-name .tipo-badge {
+  font-size:10px; font-weight:600; padding:2px 7px; border-radius:20px;
+  background:var(--bg-hover); color:var(--text-2); border:1px solid var(--border);
+}
+.agente-meta-row { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
+.agente-meta-row .meta-chip {
+  font-size:11px; color:var(--text-2); display:flex; align-items:center; gap:4px;
+}
+.agente-status { display:flex; align-items:center; gap:6px; margin-bottom:12px; }
+.status-dot { width:8px; height:8px; border-radius:50%; }
+.status-dot.activo   { background:var(--green); box-shadow:0 0 6px var(--green); }
+.status-dot.pendiente{ background:var(--yellow); }
+.status-dot.inactivo { background:var(--text-3); }
+.status-text { font-size:12px; font-weight:600; }
+.status-text.activo   { color:var(--green); }
+.status-text.pendiente{ color:var(--yellow); }
+.status-text.inactivo { color:var(--text-2); }
+
+.apikey-section { margin-bottom:12px; }
+.apikey-label { font-size:11px; color:var(--text-2); margin-bottom:4px; text-transform:uppercase; letter-spacing:.5px; }
+.apikey-row { display:flex; gap:6px; align-items:center; }
+.apikey-val {
+  flex:1; font-family:monospace; font-size:12px; padding:6px 10px;
+  background:var(--bg); border:1px solid var(--border); border-radius:6px;
+  color:var(--text-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  filter:blur(4px); transition:filter .2s; cursor:pointer;
+}
+.apikey-val.revealed { filter:none; }
+.btn-copy {
+  padding:5px 10px; background:var(--bg-hover); border:1px solid var(--border);
+  border-radius:6px; font-size:11px; color:var(--text-2); transition:all .15s;
+}
+.btn-copy:hover { color:var(--text); border-color:var(--blue); }
+
+.agente-actions { display:flex; gap:6px; flex-wrap:wrap; }
+.btn-action {
+  font-size:12px; padding:5px 12px; border-radius:6px;
+  border:1px solid var(--border); background:transparent; color:var(--text-2);
+  transition:all .15s;
+}
+.btn-action:hover { background:var(--bg-hover); color:var(--text); }
+.btn-action.success { border-color:var(--green);  color:var(--green); }
+.btn-action.success:hover { background:#3fb95018; }
+.btn-action.danger  { border-color:var(--red);    color:var(--red); }
+.btn-action.danger:hover  { background:#f8514918; }
+.btn-action.warning { border-color:var(--yellow); color:var(--yellow); }
+.btn-action.warning:hover { background:#e3b34118; }
+
+/* ── Usuarios page ────────────────────────────────────────── */
+.user-table { width:100%; border-collapse:collapse; background:var(--bg-card);
+              border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+.user-table th { padding:11px 16px; font-size:11px; text-transform:uppercase;
+                 letter-spacing:.5px; color:var(--text-2); background:var(--bg-hover);
+                 text-align:left; border-bottom:1px solid var(--border); }
+.user-table td { padding:12px 16px; border-bottom:1px solid var(--border-sub); font-size:13px; }
+.user-table tr:last-child td { border-bottom:none; }
+.user-table tr:hover td { background:var(--bg-hover); }
+.user-actions { display:flex; gap:6px; }
+
+/* ── Config FIM ───────────────────────────────────────────── */
+.config-card { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:20px; }
+.config-card-title { font-size:15px; font-weight:600; margin-bottom:6px; display:flex; align-items:center; gap:8px; }
+.config-card-desc  { font-size:13px; color:var(--text-2); margin-bottom:18px; }
+.carpeta-form { display:flex; gap:8px; margin-bottom:16px; }
+.carpeta-form input { flex:1; }
+.carpetas-lista { display:flex; flex-direction:column; gap:8px; }
+.carpeta-item {
+  display:flex; align-items:center; justify-content:space-between;
+  background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:10px 14px;
+}
+.carpeta-path { font-size:13px; font-family:monospace; display:flex; align-items:center; gap:8px; }
+.info-box {
+  background:#1f6feb18; border:1px solid #1f6feb40; border-radius:var(--radius);
+  padding:12px 16px; font-size:12px; color:var(--text-2); margin-top:16px;
+}
+.info-box strong { color:var(--blue); }
+
+/* ── Botones generales ────────────────────────────────────── */
+.btn-primary {
+  padding:8px 18px; background:var(--blue-btn); color:#fff; border:none;
+  border-radius:var(--radius); font-size:13px; font-weight:600; transition:opacity .15s;
+}
+.btn-primary:hover { opacity:.85; }
+.btn-secondary {
+  padding:8px 18px; background:transparent; color:var(--text-2); border:1px solid var(--border);
+  border-radius:var(--radius); font-size:13px; transition:all .15s;
+}
+.btn-secondary:hover { color:var(--text); border-color:var(--text-2); }
+.btn-danger {
+  padding:8px 18px; background:transparent; color:var(--red); border:1px solid #f8514944;
+  border-radius:var(--radius); font-size:13px; transition:all .15s;
+}
+.btn-danger:hover { background:#f8514918; }
+
+/* ── Modal ───────────────────────────────────────────────── */
+.modal-overlay {
+  position:fixed; inset:0; background:rgba(0,0,0,.65); backdrop-filter:blur(3px);
+  display:flex; align-items:center; justify-content:center; z-index:500;
+  animation:fadeIn .15s ease;
+}
+@keyframes fadeIn { from{opacity:0} to{opacity:1} }
+.modal-box {
+  background:var(--bg-card); border:1px solid var(--border); border-radius:12px;
+  width:460px; max-width:95vw; max-height:88vh; overflow-y:auto;
+  animation:scaleIn .15s ease; box-shadow:var(--shadow);
+}
+@keyframes scaleIn { from{transform:scale(.96);opacity:0} to{transform:scale(1);opacity:1} }
+.modal-header {
+  padding:18px 20px 14px; border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between;
+}
+.modal-header h3 { font-size:15px; font-weight:700; }
+.modal-close { background:none; border:none; color:var(--text-2); font-size:20px;
+               padding:2px 6px; border-radius:4px; transition:color .15s; }
+.modal-close:hover { color:var(--red); }
+.modal-body { padding:20px; }
+.form-field { margin-bottom:14px; }
+.form-field label { display:block; font-size:12px; color:var(--text-2);
+                    text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px; }
+.form-field input,
+.form-field select { width:100%; }
+.form-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:20px; }
+.form-note { font-size:12px; color:var(--text-2); margin-top:12px; padding:10px 12px;
+             background:var(--bg); border-radius:var(--radius); }
+.form-note strong { color:var(--blue); }
+
+/* ── Toasts ──────────────────────────────────────────────── */
+#toasts { position:fixed; bottom:24px; right:24px; z-index:9999;
+          display:flex; flex-direction:column; gap:8px; }
+.toast {
+  padding:12px 18px; border-radius:var(--radius); font-size:13px; font-weight:500;
+  box-shadow:var(--shadow); min-width:220px; max-width:340px;
+  transform:translateX(120%); transition:transform .3s ease;
+  display:flex; align-items:center; gap:10px;
+}
+.toast.visible { transform:translateX(0); }
+.toast.success { background:#238636; color:#fff; }
+.toast.error   { background:#da3633; color:#fff; }
+.toast.info    { background:var(--blue-btn); color:#fff; }
+.toast.warning { background:#9a6700; color:#fff; }
+
+/* ── Utilidades ──────────────────────────────────────────── */
+.empty { text-align:center; padding:50px 20px; color:var(--text-2); font-size:14px; }
+.empty-icon { font-size:40px; display:block; margin-bottom:12px; opacity:.4; }
+.flex-between { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+.admin-only { display:none; }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════
+     CAMBIO DE CONTRASEÑA FORZADO (overlay bloqueante)
+══════════════════════════════════════════════════════════ -->
+<div id="force-pw">
+  <div class="force-pw-card">
+    <div class="force-pw-icon">🔒</div>
+    <div class="force-pw-title">Cambio de contraseña requerido</div>
+    <div class="force-pw-sub">Por seguridad, debés establecer una nueva contraseña antes de continuar.</div>
+    <div class="force-pw-alert">
+      Esta es la primera vez que iniciás sesión. La contraseña por defecto debe ser reemplazada.
+    </div>
+    <div class="login-field">
+      <label>Contraseña actual</label>
+      <input type="password" id="fp-actual" placeholder="••••••••" />
+    </div>
+    <div class="login-field">
+      <label>Nueva contraseña</label>
+      <input type="password" id="fp-nueva" placeholder="Mínimo 6 caracteres" />
+    </div>
+    <div class="login-field">
+      <label>Confirmar nueva contraseña</label>
+      <input type="password" id="fp-confirma" placeholder="Repetí la nueva contraseña" />
+    </div>
+    <button class="login-btn" id="fp-btn" onclick="submitForcedPassword()">Cambiar contraseña</button>
+    <div class="force-pw-error" id="fp-error"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     LOGIN PAGE
+══════════════════════════════════════════════════════════ -->
+<div id="login-page">
+  <div class="login-card">
+    <div class="login-logo">🛡️</div>
+    <div class="login-title">SIEM Dashboard</div>
+    <div class="login-subtitle">Sistema de Monitoreo de Seguridad Local</div>
+
+    <div class="login-field">
+      <label>Usuario</label>
+      <input type="text" id="login-user" placeholder="admin" autocomplete="username" />
+    </div>
+    <div class="login-field">
+      <label>Contraseña</label>
+      <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password" />
+    </div>
+    <button class="login-btn" id="login-btn" onclick="doLogin()">Iniciar sesión</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     APP
+══════════════════════════════════════════════════════════ -->
+<div id="app">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <span class="shield">🛡️</span> SIEM Local
+    </div>
+
+    <nav>
+      <div class="nav-item active" data-page="overview" onclick="goPage('overview',this)">
+        <span class="icon">📊</span> Resumen
+      </div>
+      <div class="nav-item" data-page="alertas" onclick="goPage('alertas',this)">
+        <span class="icon">🚨</span> Alertas
+        <span class="nav-badge" id="badge-alertas" style="display:none">0</span>
+      </div>
+      <div class="nav-item" data-page="agentes" onclick="goPage('agentes',this)">
+        <span class="icon">🤖</span> Agentes
+        <span class="nav-badge" id="badge-agentes" style="display:none">0</span>
+      </div>
+      <div class="nav-sep"></div>
+      <div class="nav-item" data-page="config" onclick="goPage('config',this)">
+        <span class="icon">⚙️</span> Config FIM
+      </div>
+      <div class="nav-item admin-only" data-page="usuarios" onclick="goPage('usuarios',this)">
+        <span class="icon">👥</span> Usuarios
+      </div>
+    </nav>
+
+    <div class="sidebar-user">
+      <div class="user-avatar" id="user-avatar">A</div>
+      <div class="user-info">
+        <div class="user-name" id="user-name">—</div>
+        <div class="user-rol"  id="user-rol">—</div>
+      </div>
+      <button class="btn-logout" title="Cerrar sesión" onclick="doLogout()">⏻</button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main-wrap">
+
+    <!-- Topbar -->
+    <div class="topbar">
+      <div class="topbar-title" id="topbar-title">Resumen</div>
+      <div class="live-dot"   id="live-dot"></div>
+      <div class="live-label" id="live-label">Conectando…</div>
+      <div class="topbar-stat">Escaneos: <b id="top-escaneos">—</b></div>
+      <div class="topbar-stat">Último: <b id="top-ultimo">—</b></div>
+      <div class="topbar-stat">Próximo: <b id="top-proximo">—</b></div>
+      <button class="btn-pdf" onclick="descargarPDF()">📄 PDF</button>
+    </div>
+
+    <!-- ── Página: Resumen ───────────────────────────────── -->
+    <div class="page active" id="page-overview">
+      <div class="stats-grid cols4" id="ov-sev-stats"></div>
+      <div class="stats-grid cols4" id="ov-est-stats"></div>
+      <div class="section-title">Agentes conectados</div>
+      <div class="agentes-strip" id="ov-agentes"></div>
+      <div class="section-title">Últimas alertas</div>
+      <div class="recent-list" id="ov-recent"></div>
+    </div>
+
+    <!-- ── Página: Alertas ──────────────────────────────── -->
+    <div class="page" id="page-alertas">
+      <div class="filtros-bar">
+        <span class="label">Severidad:</span>
+        <button class="btn-filtro active" data-sev="todas">Todas</button>
+        <button class="btn-filtro fc-critical" data-sev="critical">Critical</button>
+        <button class="btn-filtro fc-high"     data-sev="high">High</button>
+        <button class="btn-filtro fc-medium"   data-sev="medium">Medium</button>
+        <button class="btn-filtro fc-low"      data-sev="low">Low</button>
+        <div class="sep"></div>
+        <span class="label">Estado:</span>
+        <button class="btn-filtro active" data-est="todos">Todos</button>
+        <button class="btn-filtro" data-est="nueva">Nueva</button>
+        <button class="btn-filtro" data-est="investigando">Investigando</button>
+        <button class="btn-filtro" data-est="resuelta">Resuelta</button>
+        <button class="btn-filtro" data-est="falso-positivo">Falso positivo</button>
+        <div class="sep"></div>
+        <input type="search" class="search-input" id="search-alerta"
+               placeholder="🔍 Buscar en alertas…" oninput="renderAlertas()" />
+      </div>
+      <div class="alertas-lista" id="alertas-lista">
+        <div class="empty"><span class="empty-icon">🔍</span>Cargando alertas…</div>
+      </div>
+    </div>
+
+    <!-- ── Página: Agentes ──────────────────────────────── -->
+    <div class="page" id="page-agentes">
+      <div class="flex-between">
+        <div>
+          <div style="font-size:15px;font-weight:700">Gestión de Agentes</div>
+          <div style="font-size:13px;color:var(--text-2);margin-top:2px">
+            Whitelist de equipos autorizados a enviar logs al SIEM
+          </div>
+        </div>
+        <button class="btn-primary admin-only" onclick="openAddAgente()">+ Agregar agente</button>
+      </div>
+      <div style="height:16px"></div>
+      <div class="agentes-grid" id="agentes-grid">
+        <div class="empty"><span class="empty-icon">🤖</span>Cargando agentes…</div>
+      </div>
+    </div>
+
+    <!-- ── Página: Config FIM ───────────────────────────── -->
+    <div class="page" id="page-config">
+      <div class="config-card">
+        <div class="config-card-title">📁 File Integrity Monitoring (FIM)</div>
+        <div class="config-card-desc">
+          Agregá carpetas para monitorear. El SIEM detectará accesos, modificaciones y eliminaciones de archivos.
+        </div>
+        <div class="carpeta-form">
+          <input type="text" id="input-carpeta" placeholder="Ej: C:\Users\JohnDoe\Documentos\Confidencial" />
+          <button class="btn-primary" onclick="agregarCarpeta()">+ Agregar</button>
+        </div>
+        <div class="carpetas-lista" id="carpetas-lista">
+          <div class="empty" style="padding:20px"><span>No hay carpetas monitoreadas.</span></div>
+        </div>
+        <div class="info-box">
+          <strong>¿Cómo funciona?</strong> Al agregar una carpeta se aplican reglas SACL en Windows.
+          Se detectan accesos (ID 4663), eliminaciones (4660) y aperturas de handles (4656).
+          Las alertas aparecen clasificadas como HIGH o CRITICAL.
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Página: Usuarios (admin) ─────────────────────── -->
+    <div class="page" id="page-usuarios">
+      <div class="flex-between">
+        <div>
+          <div style="font-size:15px;font-weight:700">Gestión de Usuarios</div>
+          <div style="font-size:13px;color:var(--text-2);margin-top:2px">
+            Administradores y analistas del SIEM
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn-secondary" onclick="openCambiarPassword()">🔑 Mi contraseña</button>
+          <button class="btn-primary" onclick="openAddUsuario()">+ Agregar usuario</button>
+        </div>
+      </div>
+      <div style="height:16px"></div>
+      <table class="user-table" id="user-table">
+        <thead><tr>
+          <th>Usuario</th><th>Rol</th><th>Creado</th><th>Acciones</th>
+        </tr></thead>
+        <tbody id="user-tbody"></tbody>
+      </table>
+    </div>
+
+  </div><!-- /main-wrap -->
+</div><!-- /app -->
+
+<!-- ── Modal ────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal" style="display:none" onclick="closeModal(event)">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3 id="modal-title">Título</h3>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<!-- ── Toasts ────────────────────────────────────────────── -->
+<div id="toasts"></div>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+// ESTADO GLOBAL
+// ══════════════════════════════════════════════════════════════
+let currentUser  = null;  // {username, rol} del usuario logueado
+let todasAlertas = [];    // cache de alertas (se refresca cada 30s)
+let filtroSev    = "todas";
+let filtroEst    = "todos";
+let currentPage  = "overview";
+
+// ── API wrapper: agrega el token Bearer en cada request ──────
+async function api(method, path, body = null) {
+  const token = sessionStorage.getItem("siem_token");
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const opts = { method, headers };
+  if (body) opts.body = JSON.stringify(body);
+
+  let res;
+  try {
+    res = await fetch(path, opts);
+  } catch (e) {
+    toast("Sin conexión con el servidor.", "error");
+    return null;
+  }
+
+  // Token expirado o inválido → redirigir al login
+  if (res.status === 401) {
+    sessionStorage.removeItem("siem_token");
+    showLogin();
+    return null;
+  }
+  return res;
+}
+
+// ── Toast notifications ──────────────────────────────────────
+function toast(msg, type = "success") {
+  const icons = { success:"✓", error:"✕", info:"ℹ", warning:"⚠" };
+  const el = document.createElement("div");
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span>${icons[type]||"·"}</span> ${msg}`;
+  document.getElementById("toasts").appendChild(el);
+  requestAnimationFrame(() => { requestAnimationFrame(() => el.classList.add("visible")); });
+  setTimeout(() => {
+    el.classList.remove("visible");
+    setTimeout(() => el.remove(), 320);
+  }, 3000);
+}
+
+// ── Tiempo relativo ──────────────────────────────────────────
+function relTime(ts) {
+  if (!ts) return "—";
+  const diff = Date.now() - new Date(ts.replace(" ","T")).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1)  return "ahora mismo";
+  if (mins < 60) return `hace ${mins} min`;
+  const h = Math.floor(mins / 60);
+  if (h < 24)    return `hace ${h}h`;
+  return new Date(ts.replace(" ","T")).toLocaleDateString("es-AR");
+}
+
+// ══════════════════════════════════════════════════════════════
+// AUTENTICACIÓN
+// ══════════════════════════════════════════════════════════════
+function showLogin() {
+  document.getElementById("login-page").style.display = "flex";
+  document.getElementById("app").style.display = "none";
+}
+
+function showApp(user) {
+  currentUser = user;
+  document.getElementById("login-page").style.display = "none";
+  document.getElementById("app").style.display = "block";
+
+  // Actualizar info del usuario en sidebar
+  document.getElementById("user-name").textContent   = user.username;
+  document.getElementById("user-rol").textContent    = user.rol === "admin" ? "Administrador" : "Analista";
+  document.getElementById("user-avatar").textContent = user.username[0].toUpperCase();
+
+  // Mostrar secciones de admin si corresponde
+  if (user.rol === "admin") {
+    document.querySelectorAll(".admin-only").forEach(el => el.style.display = "");
+  }
+
+  loadAllData();
+  startAutoRefresh();
+}
+
+async function checkSession() {
+  const token = sessionStorage.getItem("siem_token");
+  if (!token) { showLogin(); return; }
+
+  const res = await api("GET", "/api/me");
+  if (res && res.ok) {
+    const user = await res.json();
+    if (user.debe_cambiar_password) {
+      showForcedPasswordChange();
+    } else {
+      showApp(user);
+    }
+  } else {
+    showLogin();
+  }
+}
+
+async function doLogin() {
+  const username = document.getElementById("login-user").value.trim();
+  const password = document.getElementById("login-pass").value;
+  const btn      = document.getElementById("login-btn");
+  const errEl    = document.getElementById("login-error");
+
+  if (!username || !password) {
+    errEl.textContent = "Completá usuario y contraseña.";
+    errEl.style.display = "block";
+    return;
+  }
+
+  btn.disabled    = true;
+  btn.textContent = "Ingresando…";
+  errEl.style.display = "none";
+
+  try {
+    const res  = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await res.json();
+
+    if (res.ok) {
+      sessionStorage.setItem("siem_token", data.token);
+      if (data.debe_cambiar_password) {
+        showForcedPasswordChange();
+      } else {
+        showApp({ username: data.username, rol: data.rol });
+      }
+    } else {
+      errEl.textContent   = data.error || "Error al iniciar sesión.";
+      errEl.style.display = "block";
+    }
+  } catch (e) {
+    errEl.textContent   = "No se pudo conectar con el servidor.";
+    errEl.style.display = "block";
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = "Iniciar sesión";
+  }
+}
+
+async function doLogout() {
+  await api("POST", "/api/logout");
+  sessionStorage.removeItem("siem_token");
+  showLogin();
+}
+
+// Enter para hacer login
+document.getElementById("login-pass").addEventListener("keydown", e => {
+  if (e.key === "Enter") doLogin();
+});
+document.getElementById("login-user").addEventListener("keydown", e => {
+  if (e.key === "Enter") document.getElementById("login-pass").focus();
+});
+
+// ══════════════════════════════════════════════════════════════
+// NAVEGACIÓN
+// ══════════════════════════════════════════════════════════════
+const PAGE_TITLES = {
+  overview: "Resumen", alertas: "Alertas", agentes: "Agentes",
+  config: "Configuración FIM", usuarios: "Usuarios"
+};
+
+function goPage(page, el) {
+  currentPage = page;
+  document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+  document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+  document.getElementById("page-" + page).classList.add("active");
+  if (el) el.classList.add("active");
+  document.getElementById("topbar-title").textContent = PAGE_TITLES[page] || page;
+
+  // Cargar datos específicos de cada página
+  if (page === "overview")  renderOverview();
+  if (page === "alertas")   renderAlertas();
+  if (page === "agentes")   loadAgentes();
+  if (page === "config")    loadConfig();
+  if (page === "usuarios")  loadUsuarios();
+}
+
+// ══════════════════════════════════════════════════════════════
+// DATOS GLOBALES
+// ══════════════════════════════════════════════════════════════
+async function loadAllData() {
+  await Promise.all([
+    loadAlertas(),
+    loadSiemStatus(),
+  ]);
+  renderOverview();
+}
+
+async function loadAlertas() {
+  const res = await api("GET", "/api/alertas");
+  if (res && res.ok) {
+    todasAlertas = await res.json();
+    updateBadges();
+    if (currentPage === "alertas")   renderAlertas();
+    if (currentPage === "overview")  renderOverview();
+  }
+}
+
+async function loadSiemStatus() {
+  const res = await api("GET", "/api/estado-siem");
+  if (!res || !res.ok) return;
+  const d = await res.json();
+  const dot   = document.getElementById("live-dot");
+  const label = document.getElementById("live-label");
+  if (d.estado === "activo") {
+    dot.className = "live-dot"; label.className = "live-label"; label.textContent = "LIVE";
+  } else {
+    dot.className = "live-dot off"; label.className = "live-label off"; label.textContent = "DETENIDO";
+  }
+  document.getElementById("top-escaneos").textContent = d.total_escaneos || "0";
+  document.getElementById("top-ultimo").textContent   = d.ultimo ? d.ultimo.split(" ")[1] : "—";
+  document.getElementById("top-proximo").textContent  = d.proximo || "—";
+}
+
+function updateBadges() {
+  const criticas = todasAlertas.filter(a => a.estado === "nueva" && a.severity === "critical").length;
+  const badge    = document.getElementById("badge-alertas");
+  if (criticas > 0) { badge.textContent = criticas; badge.style.display = ""; }
+  else badge.style.display = "none";
+}
+
+function startAutoRefresh() {
+  setInterval(loadAlertas,    30000);  // alertas cada 30s
+  setInterval(loadSiemStatus, 15000);  // estado cada 15s
+}
+
+// ══════════════════════════════════════════════════════════════
+// PÁGINA: OVERVIEW
+// ══════════════════════════════════════════════════════════════
+async function renderOverview() {
+  // Stats por severidad
+  const cnt = { critical:0, high:0, medium:0, low:0 };
+  const est = { nueva:0, investigando:0, resuelta:0, "falso-positivo":0 };
+  todasAlertas.forEach(a => {
+    if (cnt[a.severity] !== undefined) cnt[a.severity]++;
+    if (est[a.estado]   !== undefined) est[a.estado]++;
+  });
+
+  document.getElementById("ov-sev-stats").innerHTML = `
+    ${statCard("🔴","Critical",cnt.critical,"c-critical")}
+    ${statCard("🟠","High",    cnt.high,    "c-high")}
+    ${statCard("🟡","Medium",  cnt.medium,  "c-medium")}
+    ${statCard("🟢","Low",     cnt.low,     "c-low")}
+  `;
+  document.getElementById("ov-est-stats").innerHTML = `
+    ${statCard("🔵","Nuevas",        est.nueva,            "c-nueva")}
+    ${statCard("🟡","Investigando",  est.investigando,     "c-investigando")}
+    ${statCard("🟢","Resueltas",     est.resuelta,         "c-resuelta")}
+    ${statCard("⚫","Falso positivo",est["falso-positivo"],"c-falso")}
+  `;
+
+  // Agentes (últimos contactos)
+  await renderAgentesStrip();
+
+  // Últimas 5 alertas
+  const recent = todasAlertas.slice(0, 5);
+  document.getElementById("ov-recent").innerHTML = recent.length
+    ? recent.map(a => `
+        <div class="recent-item ${a.severity}">
+          <span class="badge ${a.severity}">${a.severity}</span>
+          <span class="badge-estado ${a.estado}">${labelEstado(a.estado)}</span>
+          <span class="recent-summary">${a.summary || "—"}</span>
+          <span class="recent-ts">${relTime(a.timestamp)}</span>
+        </div>`).join("")
+    : `<div class="empty"><span class="empty-icon">✅</span>Sin alertas registradas</div>`;
+}
+
+function statCard(icon, label, value, cls) {
+  return `<div class="stat-card ${cls}">
+    <span class="stat-icon">${icon}</span>
+    <div class="stat-info">
+      <div class="label">${label}</div>
+      <div class="value">${value}</div>
+    </div>
+  </div>`;
+}
+
+async function renderAgentesStrip() {
+  const res = await api("GET", "/api/agentes");
+  if (!res || !res.ok) return;
+  const agentes = await res.json();
+  const strip = document.getElementById("ov-agentes");
+
+  if (!agentes.length) {
+    strip.innerHTML = `<div style="font-size:13px;color:var(--text-2)">Sin agentes configurados.</div>`;
+    return;
+  }
+
+  // Un agente se considera "online" si su último contacto fue hace menos de 10 min
+  strip.innerHTML = agentes.map(ag => {
+    const enLinea = ag.estado === "activo";
+    // Verificar si el agente del tracking histórico (tabla agentes) tuvo contacto reciente
+    return `<div class="agente-mini">
+      <div class="agente-mini-dot ${enLinea ? "on" : "off"}"></div>
+      <div class="agente-mini-info">
+        <div class="name">${ag.nombre}</div>
+        <div class="meta">${ag.ip || "IP no configurada"} · ${ag.tipo || "?"}</div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+// ══════════════════════════════════════════════════════════════
+// PÁGINA: ALERTAS
+// ══════════════════════════════════════════════════════════════
+
+// Filtros de severidad
+document.querySelectorAll("[data-sev]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("[data-sev]").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    filtroSev = btn.dataset.sev;
+    renderAlertas();
+  });
+});
+
+// Filtros de estado
+document.querySelectorAll("[data-est]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("[data-est]").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    filtroEst = btn.dataset.est;
+    renderAlertas();
+  });
+});
+
+function renderAlertas() {
+  const lista  = document.getElementById("alertas-lista");
+  const search = (document.getElementById("search-alerta")?.value || "").toLowerCase();
+
+  const filtradas = todasAlertas.filter(a => {
+    if (filtroSev !== "todas" && a.severity !== filtroSev) return false;
+    if (filtroEst !== "todos" && a.estado   !== filtroEst) return false;
+    if (search && !`${a.summary} ${a.fuente} ${a.ip}`.toLowerCase().includes(search)) return false;
+    return true;
+  });
+
+  if (!filtradas.length) {
+    lista.innerHTML = `<div class="empty"><span class="empty-icon">🔍</span>Sin alertas para los filtros seleccionados.</div>`;
+    return;
+  }
+
+  lista.innerHTML = filtradas.map(a => buildCard(a)).join("");
+
+  // Event listeners de cards
+  lista.querySelectorAll(".card-header").forEach(h => {
+    h.addEventListener("click", () => h.nextElementSibling.classList.toggle("open"));
+  });
+  lista.querySelectorAll(".btn-estado").forEach(btn => {
+    btn.addEventListener("click", e => {
+      e.stopPropagation();
+      cambiarEstado(btn.dataset.id, btn.dataset.estado);
+    });
+  });
+  lista.querySelectorAll(".btn-comment").forEach(btn => {
+    btn.addEventListener("click", e => {
+      e.stopPropagation();
+      const ta = lista.querySelector(`.ta-comment[data-id="${btn.dataset.id}"]`);
+      if (ta && ta.value.trim()) agregarComentario(btn.dataset.id, ta.value.trim(), ta);
+    });
+  });
+}
+
+function buildCard(a) {
+  const etiq = { nueva:"🔵 Nueva", investigando:"🟡 Investigando",
+                 resuelta:"🟢 Resuelta", "falso-positivo":"⚫ Falso positivo" };
+  const estados = ["nueva","investigando","resuelta","falso-positivo"];
+
+  const botonesEstado = estados.map(e => `
+    <button class="btn-estado ${a.estado===e?"active "+e:""}"
+      data-id="${a._id}" data-estado="${e}">${etiq[e]}</button>
+  `).join("");
+
+  const eventos = (a.events || []).map(ev => `
+    <div class="evento-item">
+      <span class="ev-id">${ev.id || "—"}</span>
+      <span>${ev.descripcion || "—"}${ev.riesgo ? ` <em style="color:var(--text-3)">· ${ev.riesgo}</em>` : ""}</span>
+    </div>`).join("");
+
+  const comentarios = (a.comentarios || []).map(c => `
+    <div class="comment-item">
+      <div class="comment-ts">${c.ts}</div>
+      <div class="comment-text">${c.texto}</div>
+    </div>`).join("") || `<div style="font-size:13px;color:var(--text-2);margin-bottom:8px">Sin comentarios aún.</div>`;
+
+  return `
+    <div class="alerta-card ${a.severity} ${a.estado}">
+      <div class="card-header">
+        <span class="badge ${a.severity}">${a.severity}</span>
+        <span class="badge-estado ${a.estado}">${etiq[a.estado] || a.estado}</span>
+        ${(a.ocurrencias || 1) > 1 ? `<span class="badge-ocurrencias" title="Se repitió ${a.ocurrencias} veces">×${a.ocurrencias}</span>` : ""}
+        <span class="card-summary">${a.summary || "—"}</span>
+        <div class="card-meta">
+          <span class="card-agent">${a.fuente || "—"}</span>
+          <span class="card-ts" title="Primera vez: ${a.timestamp}${(a.ocurrencias||1)>1?' · Última vez: '+a.ultima_vez:''}">
+            ${relTime(a.timestamp)}${(a.ocurrencias||1) > 1 ? ` · última: ${relTime(a.ultima_vez)}` : ""}
+          </span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-accion"><strong>Acción:</strong> ${a.accion_recomendada || "—"}</div>
+        ${eventos ? `<div class="eventos-lista">${eventos}</div>` : ""}
+        <div class="gestion">
+          <span class="gestion-label">Estado:</span>${botonesEstado}
+        </div>
+        <div class="comments-title">💬 Comentarios</div>
+        <div id="coms-${a._id}">${comentarios}</div>
+        <div class="comment-form">
+          <textarea class="ta-comment" data-id="${a._id}"
+            placeholder="Nota de investigación…"></textarea>
+          <button class="btn-comment" data-id="${a._id}">Agregar</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function cambiarEstado(id, estado) {
+  const res = await api("POST", "/api/estado", { id: parseInt(id), estado });
+  if (res && res.ok) { await loadAlertas(); toast("Estado actualizado."); }
+  else toast("Error al actualizar estado.", "error");
+}
+
+async function agregarComentario(id, texto, ta) {
+  const res = await api("POST", "/api/comentario", { id: parseInt(id), texto });
+  if (res && res.ok) { ta.value = ""; await loadAlertas(); toast("Comentario agregado."); }
+  else toast("Error al agregar comentario.", "error");
+}
+
+// ══════════════════════════════════════════════════════════════
+// PÁGINA: AGENTES
+// ══════════════════════════════════════════════════════════════
+let todosAgentes = [];
+
+async function loadAgentes() {
+  const res = await api("GET", "/api/agentes");
+  if (!res || !res.ok) return;
+  todosAgentes = await res.json();
+
+  // Badge de pendientes en sidebar
+  const pendientes = todosAgentes.filter(a => a.estado === "pendiente").length;
+  const badge = document.getElementById("badge-agentes");
+  if (pendientes > 0) { badge.textContent = pendientes; badge.style.display = ""; }
+  else badge.style.display = "none";
+
+  renderAgentes();
+}
+
+function renderAgentes() {
+  const grid = document.getElementById("agentes-grid");
+  if (!todosAgentes.length) {
+    grid.innerHTML = `<div class="empty"><span class="empty-icon">🤖</span>Sin agentes registrados.<br>
+      Agregá uno con el botón o esperá que un agente envíe su primer evento.</div>`;
+    return;
+  }
+  grid.innerHTML = todosAgentes.map(ag => buildAgenteCard(ag)).join("");
+}
+
+function buildAgenteCard(ag) {
+  const isAdmin = currentUser && currentUser.rol === "admin";
+
+  const apiKeySection = isAdmin ? `
+    <div class="apikey-section">
+      <div class="apikey-label">API Key</div>
+      <div class="apikey-row">
+        <div class="apikey-val" id="key-${ag.nombre.replace(/[^a-z0-9]/gi,'_')}"
+             onclick="revealKey(this)" title="Clic para revelar">
+          ${ag.api_key || "Sin API key"}
+        </div>
+        <button class="btn-copy" onclick="copyKey('${ag.api_key || ""}')">Copiar</button>
+      </div>
+    </div>` : "";
+
+  const acciones = isAdmin ? `
+    <div class="agente-actions">
+      ${ag.estado === "pendiente" ? `
+        <button class="btn-action success" onclick="setAgenteEstado('${ag.nombre}','activo')">✓ Aprobar</button>` : ""}
+      ${ag.estado === "activo" ? `
+        <button class="btn-action warning" onclick="setAgenteEstado('${ag.nombre}','inactivo')">Desactivar</button>
+        <button class="btn-action" onclick="regenKey('${ag.nombre}')">🔄 Nueva key</button>` : ""}
+      ${ag.estado === "inactivo" ? `
+        <button class="btn-action success" onclick="setAgenteEstado('${ag.nombre}','activo')">Reactivar</button>` : ""}
+      <button class="btn-action danger" onclick="confirmDeleteAgente('${ag.nombre}')">Eliminar</button>
+    </div>` : "";
+
+  return `
+    <div class="agente-card">
+      <div class="agente-card-top ${ag.estado}"></div>
+      <div class="agente-card-body">
+        <div class="agente-card-name">
+          ${ag.nombre}
+          <span class="tipo-badge">${ag.tipo === "linux" ? "🐧 Linux" : "🪟 Windows"}</span>
+        </div>
+        <div class="agente-meta-row">
+          <span class="meta-chip">🌐 ${ag.ip || "IP no registrada"}</span>
+          ${ag.descripcion ? `<span class="meta-chip">· ${ag.descripcion}</span>` : ""}
+        </div>
+        <div class="agente-status">
+          <div class="status-dot ${ag.estado}"></div>
+          <span class="status-text ${ag.estado}">${
+            ag.estado === "activo"    ? "ACTIVO" :
+            ag.estado === "pendiente" ? "PENDIENTE DE APROBACIÓN" : "INACTIVO"
+          }</span>
+        </div>
+        ${apiKeySection}
+        ${acciones}
+        <div style="font-size:11px;color:var(--text-3);margin-top:10px">
+          Registrado: ${ag.created_at ? ag.created_at.split(" ")[0] : "—"}
+        </div>
+      </div>
+    </div>`;
+}
+
+function revealKey(el) { el.classList.toggle("revealed"); }
+
+function copyKey(key) {
+  if (!key) { toast("Sin API key para copiar.", "warning"); return; }
+  navigator.clipboard.writeText(key).then(() => toast("API key copiada al portapapeles."))
+    .catch(() => toast("No se pudo copiar.", "error"));
+}
+
+async function setAgenteEstado(nombre, estado) {
+  const res = await api("POST", "/api/agentes/estado", { nombre, estado });
+  if (res && res.ok) { toast(`Agente ${estado}.`); loadAgentes(); }
+  else toast("Error al cambiar estado.", "error");
+}
+
+async function regenKey(nombre) {
+  if (!confirm(`¿Generar una nueva API key para "${nombre}"?\nLa key anterior quedará inválida.`)) return;
+  const res = await api("POST", "/api/agentes/regenerar-key", { nombre });
+  if (res && res.ok) {
+    const d = await res.json();
+    toast("Nueva API key generada. Actualizala en el agente.", "warning");
+    loadAgentes();
+    openModal("Nueva API Key generada", `
+      <div style="font-size:13px;color:var(--text-2);margin-bottom:14px">
+        Copiá esta key y actualizala en la configuración del agente <strong>${nombre}</strong>:
+      </div>
+      <div style="font-family:monospace;font-size:13px;background:var(--bg);border:1px solid var(--border);
+           border-radius:8px;padding:12px 14px;word-break:break-all;color:var(--yellow)">${d.api_key}</div>
+      <button class="btn-primary" style="margin-top:14px;width:100%" onclick="navigator.clipboard.writeText('${d.api_key}');toast('Copiada.')">
+        📋 Copiar key
+      </button>`);
+  } else toast("Error al regenerar key.", "error");
+}
+
+async function confirmDeleteAgente(nombre) {
+  if (!confirm(`¿Eliminar el agente "${nombre}" de la whitelist?\nPodrá volver a registrarse si envía un evento.`)) return;
+  const res = await api("POST", "/api/agentes/eliminar", { nombre });
+  if (res && res.ok) { toast(`Agente "${nombre}" eliminado.`); loadAgentes(); }
+  else toast("Error al eliminar agente.", "error");
+}
+
+function openAddAgente() {
+  openModal("Agregar nuevo agente", `
+    <div class="form-field">
+      <label>Nombre del agente</label>
+      <input type="text" id="ag-nombre" placeholder="windows-agente" />
+    </div>
+    <div class="form-field">
+      <label>IP del equipo</label>
+      <input type="text" id="ag-ip" placeholder="192.168.1.100" />
+    </div>
+    <div class="form-field">
+      <label>Descripción (opcional)</label>
+      <input type="text" id="ag-desc" placeholder="Servidor de archivos, laptop de Facu…" />
+    </div>
+    <div class="form-field">
+      <label>Tipo</label>
+      <select id="ag-tipo">
+        <option value="windows">🪟 Windows</option>
+        <option value="linux">🐧 Linux</option>
+      </select>
+    </div>
+    <div class="form-actions">
+      <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn-primary" onclick="crearAgente()">Crear agente</button>
+    </div>
+    <div class="form-note">
+      <strong>Nota:</strong> Se generará una API key automáticamente. Podés copiarla después de crear el agente.
+    </div>`);
+}
+
+async function crearAgente() {
+  const nombre      = document.getElementById("ag-nombre").value.trim();
+  const ip          = document.getElementById("ag-ip").value.trim();
+  const descripcion = document.getElementById("ag-desc").value.trim();
+  const tipo        = document.getElementById("ag-tipo").value;
+  if (!nombre) { toast("El nombre es obligatorio.", "warning"); return; }
+
+  const res = await api("POST", "/api/agentes/crear", { nombre, ip, descripcion, tipo });
+  if (!res) return;
+  const d = await res.json();
+  if (res.ok) {
+    closeModal();
+    loadAgentes();
+    toast(`Agente "${nombre}" creado.`, "success");
+    // Mostrar la API key generada
+    openModal("Agente creado — API Key", `
+      <div style="font-size:13px;color:var(--text-2);margin-bottom:14px">
+        El agente <strong>${nombre}</strong> fue creado con estado <strong>ACTIVO</strong>.
+        Copiá esta API key y configurala en el agente:
+      </div>
+      <div style="font-family:monospace;font-size:13px;background:var(--bg);border:1px solid var(--border);
+           border-radius:8px;padding:12px 14px;word-break:break-all;color:var(--green)">${d.agente.api_key}</div>
+      <button class="btn-primary" style="margin-top:14px;width:100%"
+        onclick="navigator.clipboard.writeText('${d.agente.api_key}');toast('API key copiada.')">
+        📋 Copiar API key
+      </button>
+      <div class="form-note" style="margin-top:12px">
+        <strong>En config.json del agente</strong>, agregá: <code>"api_key": "..."</code><br>
+        El campo es opcional: si no lo configurás, el agente se valida por nombre+IP.
+      </div>`);
+  } else toast(d.error || "Error al crear agente.", "error");
+}
+
+// ══════════════════════════════════════════════════════════════
+// PÁGINA: CONFIGURACIÓN FIM
+// ══════════════════════════════════════════════════════════════
+async function loadConfig() {
+  const res = await api("GET", "/api/config");
+  if (!res || !res.ok) return;
+  const config  = await res.json();
+  const carpetas = config.carpetas_monitoreadas || [];
+  const lista   = document.getElementById("carpetas-lista");
+  lista.innerHTML = carpetas.length
+    ? carpetas.map(c => `
+        <div class="carpeta-item">
+          <span class="carpeta-path">📁 ${c}</span>
+          <button class="btn-danger" style="padding:4px 12px;font-size:12px"
+            onclick="eliminarCarpeta('${c.replace(/\\/g,"\\\\").replace(/'/g,"\\'")}')">
+            Eliminar
+          </button>
+        </div>`).join("")
+    : `<div style="padding:16px;font-size:13px;color:var(--text-2)">No hay carpetas monitoreadas.</div>`;
+}
+
+async function agregarCarpeta() {
+  const input   = document.getElementById("input-carpeta");
+  const carpeta = input.value.trim();
+  if (!carpeta) return;
+  const res = await api("POST", "/api/config/carpeta", { carpeta });
+  if (res && res.ok) { input.value = ""; loadConfig(); toast("Carpeta agregada."); }
+  else toast("Error al agregar carpeta.", "error");
+}
+
+async function eliminarCarpeta(carpeta) {
+  const res = await api("POST", "/api/config/carpeta/eliminar", { carpeta });
+  if (res && res.ok) { loadConfig(); toast("Carpeta eliminada."); }
+  else toast("Error al eliminar carpeta.", "error");
+}
+
+// ══════════════════════════════════════════════════════════════
+// PÁGINA: USUARIOS
+// ══════════════════════════════════════════════════════════════
+async function loadUsuarios() {
+  const res = await api("GET", "/api/usuarios");
+  if (!res || !res.ok) return;
+  const usuarios = await res.json();
+  const tbody = document.getElementById("user-tbody");
+  tbody.innerHTML = usuarios.map(u => `
+    <tr>
+      <td><strong>${u.username}</strong></td>
+      <td><span class="badge ${u.rol}">${u.rol === "admin" ? "Administrador" : "Analista"}</span></td>
+      <td style="color:var(--text-2)">${u.created_at ? u.created_at.split(" ")[0] : "—"}</td>
+      <td>
+        <div class="user-actions">
+          <button class="btn-action" onclick="openCambiarPasswordAdmin(${u.id},'${u.username}')">
+            🔑 Contraseña
+          </button>
+          ${u.username !== currentUser?.username ? `
+            <button class="btn-action danger" onclick="eliminarUsuario(${u.id},'${u.username}')">
+              Eliminar
+            </button>` : `<span style="font-size:12px;color:var(--text-3)">(sos vos)</span>`}
+        </div>
+      </td>
+    </tr>`).join("");
+}
+
+function openAddUsuario() {
+  openModal("Agregar usuario", `
+    <div class="form-field">
+      <label>Nombre de usuario</label>
+      <input type="text" id="nu-user" placeholder="analista01" autocomplete="off" />
+    </div>
+    <div class="form-field">
+      <label>Contraseña</label>
+      <input type="password" id="nu-pass" placeholder="Mínimo 6 caracteres" autocomplete="new-password"/>
+    </div>
+    <div class="form-field">
+      <label>Rol</label>
+      <select id="nu-rol">
+        <option value="analista">Analista — ve alertas, comenta tickets</option>
+        <option value="admin">Administrador — acceso completo</option>
+      </select>
+    </div>
+    <div class="form-actions">
+      <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn-primary" onclick="crearUsuario()">Crear usuario</button>
+    </div>`);
+}
+
+async function crearUsuario() {
+  const username = document.getElementById("nu-user").value.trim();
+  const password = document.getElementById("nu-pass").value;
+  const rol      = document.getElementById("nu-rol").value;
+  if (!username || !password) { toast("Completá todos los campos.", "warning"); return; }
+  const res = await api("POST", "/api/usuarios/crear", { username, password, rol });
+  if (!res) return;
+  const d = await res.json();
+  if (res.ok) { closeModal(); loadUsuarios(); toast(`Usuario "${username}" creado.`); }
+  else toast(d.error || "Error al crear usuario.", "error");
+}
+
+async function eliminarUsuario(id, username) {
+  if (!confirm(`¿Eliminar el usuario "${username}"?\nEsta acción no se puede deshacer.`)) return;
+  const res = await api("POST", "/api/usuarios/eliminar", { id });
+  if (!res) return;
+  const d = await res.json();
+  if (res.ok) { loadUsuarios(); toast(`Usuario "${username}" eliminado.`); }
+  else toast(d.error || "Error al eliminar usuario.", "error");
+}
+
+function showForcedPasswordChange() {
+  document.getElementById("login-page").style.display = "none";
+  document.getElementById("app").style.display        = "none";
+  document.getElementById("force-pw").classList.add("show");
+  // Bloquear cierre con Escape para este overlay
+  document.getElementById("fp-actual").focus();
+}
+
+async function submitForcedPassword() {
+  const actual    = document.getElementById("fp-actual").value;
+  const nueva     = document.getElementById("fp-nueva").value;
+  const confirma  = document.getElementById("fp-confirma").value;
+  const btn       = document.getElementById("fp-btn");
+  const errEl     = document.getElementById("fp-error");
+
+  errEl.style.display = "none";
+
+  if (!actual || !nueva || !confirma) {
+    errEl.textContent   = "Completá todos los campos.";
+    errEl.style.display = "block";
+    return;
+  }
+  if (nueva.length < 6) {
+    errEl.textContent   = "La nueva contraseña debe tener al menos 6 caracteres.";
+    errEl.style.display = "block";
+    return;
+  }
+  if (nueva !== confirma) {
+    errEl.textContent   = "Las contraseñas no coinciden.";
+    errEl.style.display = "block";
+    return;
+  }
+  if (nueva === actual) {
+    errEl.textContent   = "La nueva contraseña debe ser diferente a la actual.";
+    errEl.style.display = "block";
+    return;
+  }
+
+  btn.disabled    = true;
+  btn.textContent = "Guardando…";
+
+  const res = await api("POST", "/api/me/password", { password_actual: actual, password_nuevo: nueva });
+  btn.disabled    = false;
+  btn.textContent = "Cambiar contraseña";
+
+  if (!res) return;
+  const d = await res.json();
+
+  if (res.ok) {
+    document.getElementById("force-pw").classList.remove("show");
+    // actualizar_password invalida la sesión → hay que hacer login nuevamente
+    sessionStorage.removeItem("siem_token");
+    showLogin();
+    toast("Contraseña actualizada. Iniciá sesión con tu nueva contraseña.", "success");
+  } else {
+    errEl.textContent   = d.error || "Error al cambiar contraseña.";
+    errEl.style.display = "block";
+  }
+}
+
+function openCambiarPassword() {
+  openModal("Cambiar mi contraseña", `
+    <div class="form-field">
+      <label>Contraseña actual</label>
+      <input type="password" id="cp-actual" placeholder="••••••••" />
+    </div>
+    <div class="form-field">
+      <label>Nueva contraseña</label>
+      <input type="password" id="cp-nueva" placeholder="Mínimo 6 caracteres" />
+    </div>
+    <div class="form-actions">
+      <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn-primary" onclick="cambiarMiPassword()">Guardar</button>
+    </div>`);
+}
+
+async function cambiarMiPassword() {
+  const actual = document.getElementById("cp-actual").value;
+  const nueva  = document.getElementById("cp-nueva").value;
+  const res    = await api("POST", "/api/me/password", { password_actual: actual, password_nuevo: nueva });
+  if (!res) return;
+  const d = await res.json();
+  if (res.ok) { closeModal(); toast("Contraseña actualizada. Iniciá sesión nuevamente.", "info"); doLogout(); }
+  else toast(d.error || "Error al cambiar contraseña.", "error");
+}
+
+function openCambiarPasswordAdmin(id, username) {
+  openModal(`Cambiar contraseña — ${username}`, `
+    <div class="form-field">
+      <label>Nueva contraseña para "${username}"</label>
+      <input type="password" id="cpa-nueva" placeholder="Mínimo 6 caracteres" />
+    </div>
+    <div class="form-actions">
+      <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn-primary" onclick="cambiarPasswordAdmin(${id})">Guardar</button>
+    </div>`);
+}
+
+async function cambiarPasswordAdmin(id) {
+  const password = document.getElementById("cpa-nueva").value;
+  const res      = await api("POST", "/api/usuarios/password", { id, password });
+  if (!res) return;
+  const d = await res.json();
+  if (res.ok) { closeModal(); toast("Contraseña actualizada."); }
+  else toast(d.error || "Error.", "error");
+}
+
+// ══════════════════════════════════════════════════════════════
+// PDF
+// ══════════════════════════════════════════════════════════════
+async function descargarPDF() {
+  const btn = document.querySelector(".btn-pdf");
+  btn.textContent = "Generando…";
+  try {
+    const res = await api("GET", "/api/pdf");
+    if (!res || !res.ok) { toast("Error generando PDF.", "error"); return; }
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `reporte_siem_${new Date().toISOString().slice(0,10)}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast("PDF descargado.");
+  } catch(e) {
+    toast("Error generando PDF: " + e.message, "error");
+  } finally {
+    btn.innerHTML = "📄 PDF";
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// MODAL
+// ══════════════════════════════════════════════════════════════
+function openModal(title, bodyHTML) {
+  document.getElementById("modal-title").textContent = title;
+  document.getElementById("modal-body").innerHTML    = bodyHTML;
+  document.getElementById("modal").style.display     = "flex";
+}
+function closeModal(e) {
+  // Si se pasó un evento, solo cerrar si el click fue en el overlay
+  if (e && e.target !== document.getElementById("modal")) return;
+  document.getElementById("modal").style.display = "none";
+}
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") {
+    // No cerrar si el overlay de cambio forzado está activo
+    if (document.getElementById("force-pw").classList.contains("show")) return;
+    document.getElementById("modal").style.display = "none";
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════════════════
+function labelEstado(e) {
+  return { nueva:"🔵 Nueva", investigando:"🟡 Investigando",
+           resuelta:"🟢 Resuelta", "falso-positivo":"⚫ Falso positivo" }[e] || e;
+}
+
+// ══════════════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════════════
+checkSession();
+</script>
+</body>
+</html>
