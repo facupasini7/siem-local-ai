@@ -4,11 +4,12 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timedelta
 from urllib.parse import urlparse
 
-LOG_FILE     = r"C:\siem-claude\alertas.jsonl"
-TICKETS_FILE = r"C:\siem-claude\tickets.json"
-SIEM_LOG     = r"C:\siem-claude\siem_output.log"
-PDF_OUTPUT   = r"C:\siem-claude\reporte_siem.pdf"
-CONFIG_FILE  = r"C:\siem-claude\config.json"
+LOG_FILE          = r"C:\siem-claude\alertas.jsonl"
+TICKETS_FILE      = r"C:\siem-claude\tickets.json"
+SIEM_LOG          = r"C:\siem-claude\siem_output.log"
+PDF_OUTPUT        = r"C:\siem-claude\reporte_siem.pdf"
+CONFIG_FILE       = r"C:\siem-claude\config.json"
+EVENTOS_EXT_FILE  = r"C:\siem-claude\eventos_externos.jsonl"
 
 # ─── Helpers ─────────────────────────────────────────────────
 
@@ -103,6 +104,27 @@ def leer_estado_siem():
         "estado":         estado
     }
 
+def leer_eventos_externos():
+    """Lee eventos recibidos de agentes externos (Ubuntu, AWS, etc)."""
+    if not os.path.exists(EVENTOS_EXT_FILE):
+        return []
+    eventos = []
+    with open(EVENTOS_EXT_FILE, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                try:
+                    eventos.append(json.loads(line))
+                except:
+                    pass
+    return list(reversed(eventos))
+
+def guardar_evento_externo(evento: dict):
+    """Guarda un evento recibido de un agente externo."""
+    evento["timestamp_recibido"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with open(EVENTOS_EXT_FILE, "a", encoding="utf-8") as f:
+        f.write(json.dumps(evento, ensure_ascii=False) + "\n")
+
 def generar_pdf(alertas, tickets):
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors
@@ -139,7 +161,7 @@ def generar_pdf(alertas, tickets):
     story.append(Paragraph("SIEM Dashboard — Reporte de Seguridad", titulo_style))
     story.append(Paragraph(
         f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}  |  "
-        f"Motor: Ollama llama3.1:8b  |  Monitoreo: Local",
+        f"Motor: Ollama  |  Monitoreo: Local + Agentes",
         sub_style
     ))
     story.append(HRFlowable(width="100%", thickness=1, color=ACCENT))
@@ -244,7 +266,7 @@ def generar_pdf(alertas, tickets):
     story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#30363d")))
     story.append(Paragraph(
         f"Reporte generado automaticamente por SIEM local con IA — "
-        f"Ollama llama3.1:8b — {datetime.now().strftime('%d/%m/%Y')}",
+        f"{datetime.now().strftime('%d/%m/%Y')}",
         footer_style
     ))
     doc.build(story)
@@ -289,6 +311,9 @@ class Handler(BaseHTTPRequestHandler):
 
         elif path == "/api/config":
             self.send_json(leer_config())
+
+        elif path == "/api/eventos-externos":
+            self.send_json(leer_eventos_externos())
 
         elif path == "/api/pdf":
             try:
@@ -347,7 +372,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"ok": True})
 
         elif path == "/api/config/carpeta":
-            carpeta = body.get("carpeta", "").strip()
+            carpeta  = body.get("carpeta", "").strip()
             if not carpeta:
                 self.send_json({"ok": False, "error": "carpeta vacia"}, 400)
                 return
@@ -360,8 +385,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"ok": True, "carpetas": carpetas})
 
         elif path == "/api/config/carpeta/eliminar":
-            carpeta = body.get("carpeta", "").strip()
-            config  = leer_config()
+            carpeta  = body.get("carpeta", "").strip()
+            config   = leer_config()
             carpetas = config.get("carpetas_monitoreadas", [])
             if carpeta in carpetas:
                 carpetas.remove(carpeta)
@@ -369,13 +394,31 @@ class Handler(BaseHTTPRequestHandler):
                 guardar_config(config)
             self.send_json({"ok": True, "carpetas": carpetas})
 
+        elif path == "/api/eventos-externos":
+            agente = body.get("agente", "desconocido")
+            logs   = body.get("logs", "")
+            ip     = body.get("ip", "desconocida")
+
+            if not logs:
+                self.send_json({"ok": False, "error": "logs vacios"}, 400)
+                return
+
+            guardar_evento_externo({
+                "agente": agente,
+                "ip":     ip,
+                "logs":   logs,
+                "estado": "pendiente"
+            })
+            self.send_json({"ok": True, "mensaje": f"Evento recibido de {agente}"})
+
         else:
             self.send_response(404)
             self.end_headers()
 
 if __name__ == "__main__":
-    server = HTTPServer(("localhost", 8080), Handler)
+    server = HTTPServer(("0.0.0.0", 8080), Handler)
     print("=" * 50)
     print("Dashboard SIEM corriendo en: http://localhost:8080")
+    print("Aceptando agentes en: http://192.168.1.48:8080")
     print("=" * 50)
     server.serve_forever()
