@@ -234,8 +234,74 @@ JSON:"""
         headers={"Content-Type": "application/json"}
     )
     with urllib.request.urlopen(req, timeout=TIMEOUT_SEGUNDOS) as resp:
-        data = json.loads(resp.read())
-        return json.loads(data["response"].strip())
+        data     = json.loads(resp.read())
+        analysis = json.loads(data["response"].strip())
+
+    # Sanitizar campos de texto: eliminar caracteres extraños y espacios dobles
+    import re
+    def _clean(text: str) -> str:
+        if not isinstance(text, str):
+            return text
+        # Quitar caracteres de control y no imprimibles
+        text = re.sub(r'[\x00-\x1f\x7f]', ' ', text)
+        # Colapsar espacios múltiples
+        text = re.sub(r' {2,}', ' ', text)
+        return text.strip()
+
+    analysis["summary"]            = _clean(analysis.get("summary", ""))
+    analysis["accion_recomendada"] = _clean(analysis.get("accion_recomendada", ""))
+    for ev in analysis.get("events", []):
+        ev["descripcion"] = _clean(ev.get("descripcion", ""))
+        ev["riesgo"]      = _clean(ev.get("riesgo", ""))
+
+    return analysis
+
+def enviar_telegram(summary: str, fuente: str, severity: str, ip: str = "") -> bool:
+    """
+    Envía una alerta crítica a Telegram vía Bot API.
+    Usa urllib (sin requests) para no añadir dependencias en el servidor de análisis.
+    Retorna True si el envío fue exitoso.
+    """
+    try:
+        import urllib.request, json as _json, ssl as _ssl
+        token   = database.get_config_global("telegram_bot_token", "").strip()
+        chat_id = database.get_config_global("telegram_chat_id",   "").strip()
+        activo  = database.get_config_global("telegram_activo",    "0") == "1"
+
+        if not activo or not token or not chat_id:
+            return False
+
+        _ctx = _ssl.create_default_context()
+        _ctx.check_hostname = False
+        _ctx.verify_mode    = _ssl.CERT_NONE
+
+        sev_emoji = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🟢"}.get(severity, "⚪")
+        texto = (
+            f"{sev_emoji} *SIEM ALERTA {severity.upper()}*\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"*Agente:* `{fuente}`\n"
+            f"*IP:* `{ip or 'desconocida'}`\n"
+            f"*Resumen:* {summary[:400]}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"_SIEM Local — {datetime.now().strftime('%d/%m/%Y %H:%M')}_"
+        )
+        payload = _json.dumps({
+            "chat_id":    chat_id,
+            "text":       texto,
+            "parse_mode": "Markdown"
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            data=payload,
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=10, context=_ctx) as resp:
+            data = _json.loads(resp.read())
+            return data.get("ok", False)
+    except Exception as e:
+        log(f"  [Telegram] Error al enviar: {e}")
+        return False
+
 
 def notificar_windows(severity: str, summary: str, fuente: str = "windows"):
     titulo  = f"SIEM - Alerta {severity.upper()} [{fuente.upper()}]"
@@ -265,6 +331,8 @@ def procesar_ciclo():
     log(f"Procesando eventos de todos los agentes cada {VENTANA_MINUTOS} minutos")
     log("-" * 50)
 
+    ultimo_cleanup = datetime.now()
+
     while True:
         proxima = datetime.now() + timedelta(minutes=VENTANA_MINUTOS)
         log(f"Esperando eventos hasta {proxima.strftime('%H:%M:%S')}...")
@@ -273,6 +341,15 @@ def procesar_ciclo():
             time.sleep(10)
 
         ts      = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Limpieza de alertas antiguas — una vez cada 24 horas
+        if (datetime.now() - ultimo_cleanup).total_seconds() > 86400:
+            eliminadas = database.limpiar_alertas_antiguas()
+            if eliminadas:
+                log(f"[Retención] {eliminadas} alerta(s) eliminadas por política de retención")
+            database.limpiar_sesiones_expiradas()
+            ultimo_cleanup = datetime.now()
+
         # Leer eventos pendientes desde la DB (antes leía eventos_externos.jsonl)
         eventos = database.get_eventos_pendientes()
 
@@ -317,6 +394,21 @@ def procesar_ciclo():
                     log(f"  Severidad corregida: LLM={sev_llm} → Python={sev_python}")
                     analysis["severity"] = sev_python
 
+                # Descartar análisis "sin novedad" — el LLM a veces reporta
+                # "no se detectaron eventos significativos" cuando no hay nada real.
+                # No tiene sentido guardar alertas vacías de contenido.
+                _summary_lower = analysis.get("summary", "").lower()
+                _FRASES_RUIDO = [
+                    "no hay eventos", "no se detectaron", "no se registraron",
+                    "no se observaron", "sin eventos", "sin actividad",
+                    "no significant", "nothing significant", "no events",
+                    "actividad normal", "sin novedades", "sin incidentes",
+                ]
+                if any(f in _summary_lower for f in _FRASES_RUIDO) and analysis.get("severity") == "low":
+                    log(f"  {agente}: sin novedad — descartado (no se guarda alerta)")
+                    database.marcar_evento_procesado(evento_id, None)
+                    continue
+
                 alerta_id, es_nueva = database.guardar_alerta(analysis, ts)
                 database.marcar_evento_procesado(evento_id, alerta_id)
 
@@ -328,7 +420,19 @@ def procesar_ciclo():
 
                 if sev in ("high", "critical"):
                     notificar_windows(sev, analysis.get("summary", ""), fuente=agente)
-                    log(f"  Notificacion enviada para {agente}")
+                    log(f"  Notificacion Windows enviada para {agente}")
+
+                if sev == "critical":
+                    ok = enviar_telegram(
+                        summary  = analysis.get("summary", ""),
+                        fuente   = agente,
+                        severity = sev,
+                        ip       = ip
+                    )
+                    if ok:
+                        log(f"  [Telegram] Alerta critica enviada correctamente")
+                    else:
+                        log(f"  [Telegram] No configurado o error al enviar")
 
                 if ORDEN_SEVERIDAD.index(sev) >= ORDEN_SEVERIDAD.index(SEVERITY_MINIMA):
                     log(f"  ALERTA: {analysis.get('accion_recomendada', '-')}")

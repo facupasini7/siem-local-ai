@@ -4,6 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SIEM — Dashboard</title>
+<!-- qrcode.js para generar el QR del TOTP en el navegador (sin servidor) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
+        integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSQX0FslNhTDadL4znixok3ILna4IfagnMZWA=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<!-- Chart.js para gráficos del dashboard -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
 /* ── Reset y variables ───────────────────────────────────── */
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
@@ -140,10 +146,11 @@ nav { flex:1; padding:10px 0; overflow-y:auto; }
 .user-name { font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .user-rol  { font-size:11px; color:var(--text-2); }
 .btn-logout {
-  background:none; border:none; color:var(--text-3); font-size:16px; padding:4px;
-  border-radius:4px; transition:color .15s; flex-shrink:0;
+  background:none; border:none; color:#f85149; font-size:18px; padding:6px;
+  border-radius:6px; transition:color .15s, background .15s; flex-shrink:0;
+  line-height:1; opacity:.75;
 }
-.btn-logout:hover { color:var(--red); }
+.btn-logout:hover { opacity:1; background:rgba(248,81,73,.15); }
 
 .main-wrap { margin-left:var(--sidebar); min-height:100vh; display:flex; flex-direction:column; }
 
@@ -223,6 +230,23 @@ nav { flex:1; padding:10px 0; overflow-y:auto; }
 .recent-summary { flex:1; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .recent-ts { font-size:11px; color:var(--text-2); white-space:nowrap; }
 
+/* ── Charts (overview) ───────────────────────────────────── */
+.charts-row {
+  display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; margin-bottom:24px;
+}
+@media(max-width:1100px) { .charts-row { grid-template-columns:1fr 1fr; } }
+@media(max-width:700px)  { .charts-row { grid-template-columns:1fr;    } }
+.chart-card {
+  background:var(--bg-card); border:1px solid var(--border); border-radius:10px;
+  padding:16px 18px;
+}
+.chart-card-title {
+  font-size:12px; font-weight:600; color:var(--text-2);
+  text-transform:uppercase; letter-spacing:.5px; margin-bottom:14px;
+}
+.chart-wrap { position:relative; height:200px; }
+.chart-wrap canvas { max-height:200px; }
+
 /* ── Badges ──────────────────────────────────────────────── */
 .badge {
   font-size:11px; font-weight:700; padding:3px 9px; border-radius:20px;
@@ -295,6 +319,9 @@ nav { flex:1; padding:10px 0; overflow-y:auto; }
 .card-meta { display:flex; align-items:center; gap:8px; flex-shrink:0; }
 .card-agent { font-size:11px; color:var(--text-2); background:var(--bg-hover);
               padding:2px 8px; border-radius:20px; border:1px solid var(--border); }
+.card-agent.os-linux   { color:#58a6ff; border-color:#1f6feb; background:#0d2045; }
+.card-agent.os-windows { color:#bc8cff; border-color:#6e40c9; background:#1a0d2e; }
+.card-agent.os-aws     { color:#f0883e; border-color:#9e4e00; background:#2d1500; }
 .card-ts { font-size:11px; color:var(--text-2); }
 
 .card-body { display:none; padding:0 16px 16px; border-top:1px solid var(--border-sub); }
@@ -397,6 +424,92 @@ nav { flex:1; padding:10px 0; overflow-y:auto; }
 .btn-action.warning { border-color:var(--yellow); color:var(--yellow); }
 .btn-action.warning:hover { background:#e3b34118; }
 
+/* ── Reportes page ───────────────────────────────────────── */
+.reportes-grid { display:grid; grid-template-columns:320px 1fr; gap:20px; align-items:start; }
+.filtros-panel {
+  background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:20px;
+  position:sticky; top:calc(var(--topbar) + 20px);
+}
+.filtros-panel h3 { font-size:13px; font-weight:700; margin-bottom:16px; color:var(--text); }
+.filtros-panel .section { margin-bottom:18px; }
+.filtros-panel .section-label {
+  font-size:11px; text-transform:uppercase; letter-spacing:.5px;
+  color:var(--text-2); margin-bottom:8px; font-weight:600;
+}
+.date-range { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.date-range input { font-size:12px; padding:7px 10px; width:100%; }
+.check-group { display:flex; flex-direction:column; gap:6px; }
+.check-item { display:flex; align-items:center; gap:8px; cursor:pointer; }
+.check-item input[type=checkbox] {
+  width:15px; height:15px; accent-color:var(--blue);
+  background:var(--bg-input); border:1px solid var(--border);
+  cursor:pointer; flex-shrink:0;
+}
+.check-item label { font-size:13px; cursor:pointer; user-select:none; }
+.export-btns { display:flex; flex-direction:column; gap:8px; margin-top:20px; }
+.btn-export-pdf {
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  padding:10px; background:var(--red); color:#fff; border:none;
+  border-radius:var(--radius); font-size:13px; font-weight:600;
+  transition:opacity .15s; width:100%;
+}
+.btn-export-pdf:hover { opacity:.85; }
+.btn-export-csv {
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  padding:10px; background:#238636; color:#fff; border:none;
+  border-radius:var(--radius); font-size:13px; font-weight:600;
+  transition:opacity .15s; width:100%;
+}
+.btn-export-csv:hover { opacity:.85; }
+.preview-panel {
+  background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:20px;
+}
+.preview-panel h3 { font-size:13px; font-weight:700; margin-bottom:4px; }
+.preview-stats {
+  display:flex; gap:12px; flex-wrap:wrap; margin:14px 0;
+}
+.preview-stat {
+  background:var(--bg-hover); border:1px solid var(--border); border-radius:8px;
+  padding:10px 16px; text-align:center; min-width:80px;
+}
+.preview-stat .ps-num  { font-size:22px; font-weight:700; line-height:1; }
+.preview-stat .ps-lbl  { font-size:11px; color:var(--text-2); margin-top:2px; text-transform:uppercase; }
+.preview-table { width:100%; border-collapse:collapse; font-size:12px; margin-top:12px; }
+.preview-table th {
+  padding:8px 12px; background:var(--bg-hover); text-align:left;
+  font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--text-2);
+  border-bottom:1px solid var(--border);
+}
+.preview-table td { padding:8px 12px; border-bottom:1px solid var(--border-sub); }
+.preview-table tr:hover td { background:var(--bg-hover); }
+
+/* ── Roles page ───────────────────────────────────────────── */
+.roles-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(360px,1fr)); gap:16px; }
+.rol-card {
+  background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:18px;
+}
+.rol-card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.rol-card-title { font-size:15px; font-weight:700; display:flex; align-items:center; gap:8px; }
+.rol-builtin-badge {
+  font-size:10px; padding:2px 7px; border-radius:20px;
+  background:var(--blue-btn); color:#fff; font-weight:600;
+}
+.rol-card-desc { font-size:12px; color:var(--text-2); margin-bottom:14px; }
+.permisos-matrix { display:flex; flex-direction:column; gap:10px; }
+.perm-categoria { font-size:11px; font-weight:700; text-transform:uppercase;
+                  letter-spacing:.5px; color:var(--text-2); margin-bottom:4px; }
+.permisos-grid { display:grid; grid-template-columns:1fr 1fr; gap:4px; }
+.perm-toggle {
+  display:flex; align-items:center; gap:7px; padding:5px 8px;
+  border-radius:6px; background:var(--bg-hover); border:1px solid var(--border);
+  font-size:12px; cursor:pointer; transition:all .15s; user-select:none;
+}
+.perm-toggle:hover { border-color:var(--blue); }
+.perm-toggle.active { background:#58a6ff18; border-color:var(--blue); color:var(--blue); }
+.perm-toggle.disabled-perm { opacity:.4; cursor:not-allowed; }
+.perm-dot { width:7px; height:7px; border-radius:50%; background:var(--border); flex-shrink:0; }
+.perm-toggle.active .perm-dot { background:var(--blue); }
+
 /* ── Usuarios page ────────────────────────────────────────── */
 .user-table { width:100%; border-collapse:collapse; background:var(--bg-card);
               border:1px solid var(--border); border-radius:10px; overflow:hidden; }
@@ -407,6 +520,15 @@ nav { flex:1; padding:10px 0; overflow-y:auto; }
 .user-table tr:last-child td { border-bottom:none; }
 .user-table tr:hover td { background:var(--bg-hover); }
 .user-actions { display:flex; gap:6px; }
+
+/* ── Seguridad Global ─────────────────────────────────────── */
+.seg-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px,1fr)); gap:16px; }
+.seg-card { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:20px; }
+.seg-card-title { font-size:14px; font-weight:700; margin-bottom:16px; color:var(--blue); }
+.seg-checks { display:flex; flex-direction:column; gap:10px; margin-top:8px; }
+.seg-check { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-2); cursor:pointer; }
+.seg-check input[type=checkbox] { width:15px; height:15px; accent-color:var(--blue); cursor:pointer; }
+.form-hint { font-size:11px; color:var(--text-3); margin-top:4px; }
 
 /* ── Config FIM ───────────────────────────────────────────── */
 .config-card { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:20px; }
@@ -494,7 +616,7 @@ nav { flex:1; padding:10px 0; overflow-y:auto; }
 .empty { text-align:center; padding:50px 20px; color:var(--text-2); font-size:14px; }
 .empty-icon { font-size:40px; display:block; margin-bottom:12px; opacity:.4; }
 .flex-between { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
-.admin-only { display:none; }
+body:not(.is-admin) .admin-only { display:none; }
 </style>
 </head>
 <body>
@@ -534,18 +656,48 @@ nav { flex:1; padding:10px 0; overflow-y:auto; }
   <div class="login-card">
     <div class="login-logo">🛡️</div>
     <div class="login-title">SIEM Dashboard</div>
-    <div class="login-subtitle">Sistema de Monitoreo de Seguridad Local</div>
+    <div class="login-subtitle" id="login-subtitle">Sistema de Monitoreo de Seguridad Local</div>
 
-    <div class="login-field">
-      <label>Usuario</label>
-      <input type="text" id="login-user" placeholder="admin" autocomplete="username" />
+    <!-- Paso 1: usuario y contraseña -->
+    <div id="login-step-1">
+      <div class="login-field">
+        <label>Usuario</label>
+        <input type="text" id="login-user" placeholder="admin" autocomplete="username" />
+      </div>
+      <div class="login-field">
+        <label>Contraseña</label>
+        <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password" />
+      </div>
+      <button class="login-btn" id="login-btn" onclick="doLogin()">Iniciar sesión</button>
     </div>
-    <div class="login-field">
-      <label>Contraseña</label>
-      <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password" />
+
+    <!-- Paso 2: código TOTP (oculto hasta que se necesite) -->
+    <div id="login-step-2" style="display:none">
+      <div style="text-align:center;margin-bottom:16px;font-size:13px;color:var(--text-2)">
+        🔐 Ingresá el código de tu autenticador
+      </div>
+      <div class="login-field">
+        <label>Código 2FA (6 dígitos)</label>
+        <input type="text" id="login-totp-code" placeholder="000000"
+               maxlength="6" autocomplete="one-time-code"
+               style="font-size:22px;letter-spacing:6px;text-align:center"
+               oninput="this.value=this.value.replace(/\D/g,'')"
+               onkeydown="if(event.key==='Enter')submitLoginTotp()" />
+      </div>
+      <button class="login-btn" id="login-totp-btn" onclick="submitLoginTotp()">Verificar</button>
+      <div style="text-align:center;margin-top:10px">
+        <a href="#" style="font-size:12px;color:var(--text-2)" onclick="cancelarTotp();return false;">
+          Volver al inicio de sesión
+        </a>
+      </div>
     </div>
-    <button class="login-btn" id="login-btn" onclick="doLogin()">Iniciar sesión</button>
+
     <div class="login-error" id="login-error"></div>
+    <div style="text-align:center;margin-top:16px">
+      <a href="#" style="font-size:12px;color:var(--text-2)" onclick="openRecuperarPassword();return false;">
+        ¿Olvidaste tu contraseña?
+      </a>
+    </div>
   </div>
 </div>
 
@@ -573,11 +725,24 @@ nav { flex:1; padding:10px 0; overflow-y:auto; }
         <span class="nav-badge" id="badge-agentes" style="display:none">0</span>
       </div>
       <div class="nav-sep"></div>
-      <div class="nav-item" data-page="config" onclick="goPage('config',this)">
+      <div class="nav-item" id="nav-reportes" data-page="reportes" onclick="goPage('reportes',this)">
+        <span class="icon">📊</span> Reportes
+      </div>
+      <div class="nav-item" id="nav-config" data-page="config" onclick="goPage('config',this)">
         <span class="icon">⚙️</span> Config FIM
+      </div>
+      <div class="nav-sep"></div>
+      <div class="nav-item admin-only" id="nav-roles" data-page="roles" onclick="goPage('roles',this)">
+        <span class="icon">🎭</span> Roles
       </div>
       <div class="nav-item admin-only" data-page="usuarios" onclick="goPage('usuarios',this)">
         <span class="icon">👥</span> Usuarios
+      </div>
+      <div class="nav-item admin-only" data-page="auditoria" onclick="goPage('auditoria',this)">
+        <span class="icon">📋</span> Auditoría
+      </div>
+      <div class="nav-item admin-only" id="nav-seguridad" data-page="seguridad" onclick="goPage('seguridad',this)">
+        <span class="icon">🛡️</span> Seguridad
       </div>
     </nav>
 
@@ -587,7 +752,16 @@ nav { flex:1; padding:10px 0; overflow-y:auto; }
         <div class="user-name" id="user-name">—</div>
         <div class="user-rol"  id="user-rol">—</div>
       </div>
-      <button class="btn-logout" title="Cerrar sesión" onclick="doLogout()">⏻</button>
+      <button class="btn-logout" title="Cerrar sesión" onclick="doLogout()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <!-- Marco de puerta -->
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+          <!-- Flecha saliendo -->
+          <polyline points="16 17 21 12 16 7"/>
+          <line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+      </button>
     </div>
   </aside>
 
@@ -609,6 +783,24 @@ nav { flex:1; padding:10px 0; overflow-y:auto; }
     <div class="page active" id="page-overview">
       <div class="stats-grid cols4" id="ov-sev-stats"></div>
       <div class="stats-grid cols4" id="ov-est-stats"></div>
+
+      <!-- Gráficos -->
+      <div class="section-title">Análisis gráfico</div>
+      <div class="charts-row">
+        <div class="chart-card">
+          <div class="chart-card-title">Distribución por severidad</div>
+          <div class="chart-wrap"><canvas id="chart-donut"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-card-title">Alertas por agente</div>
+          <div class="chart-wrap"><canvas id="chart-agentes"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-card-title">Alertas últimos 7 días</div>
+          <div class="chart-wrap"><canvas id="chart-tendencia"></canvas></div>
+        </div>
+      </div>
+
       <div class="section-title">Agentes conectados</div>
       <div class="agentes-strip" id="ov-agentes"></div>
       <div class="section-title">Últimas alertas</div>
@@ -631,6 +823,12 @@ nav { flex:1; padding:10px 0; overflow-y:auto; }
         <button class="btn-filtro" data-est="investigando">Investigando</button>
         <button class="btn-filtro" data-est="resuelta">Resuelta</button>
         <button class="btn-filtro" data-est="falso-positivo">Falso positivo</button>
+        <div class="sep"></div>
+        <span class="label">Agente:</span>
+        <select id="filtro-agente" onchange="renderAlertas()"
+          style="padding:4px 8px;font-size:12px;height:30px;border-radius:20px;">
+          <option value="">Todos</option>
+        </select>
         <div class="sep"></div>
         <input type="search" class="search-input" id="search-alerta"
                placeholder="🔍 Buscar en alertas…" oninput="renderAlertas()" />
@@ -657,6 +855,90 @@ nav { flex:1; padding:10px 0; overflow-y:auto; }
       </div>
     </div>
 
+    <!-- ── Página: Reportes ──────────────────────────────── -->
+    <div class="page" id="page-reportes">
+      <div class="reportes-grid">
+        <!-- Panel de filtros -->
+        <div class="filtros-panel">
+          <h3>🔎 Filtros</h3>
+
+          <div class="section">
+            <div class="section-label">Rango de fechas</div>
+            <div class="date-range">
+              <input type="date" id="r-desde" title="Desde" />
+              <input type="date" id="r-hasta" title="Hasta" />
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-label">Severidad</div>
+            <div class="check-group">
+              <label class="check-item"><input type="checkbox" class="r-sev" value="critical"><label>🔴 Critical</label></label>
+              <label class="check-item"><input type="checkbox" class="r-sev" value="high"><label>🟠 High</label></label>
+              <label class="check-item"><input type="checkbox" class="r-sev" value="medium"><label>🟡 Medium</label></label>
+              <label class="check-item"><input type="checkbox" class="r-sev" value="low"><label>🟢 Low</label></label>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-label">Estado del ticket</div>
+            <div class="check-group">
+              <label class="check-item"><input type="checkbox" class="r-est" value="nueva"><label>🔵 Nueva</label></label>
+              <label class="check-item"><input type="checkbox" class="r-est" value="investigando"><label>🟡 Investigando</label></label>
+              <label class="check-item"><input type="checkbox" class="r-est" value="resuelta"><label>🟢 Resuelta</label></label>
+              <label class="check-item"><input type="checkbox" class="r-est" value="falso-positivo"><label>⚫ Falso positivo</label></label>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-label">Agentes</div>
+            <div class="check-group" id="r-agentes-checks">
+              <span style="font-size:12px;color:var(--text-3)">Cargando agentes…</span>
+            </div>
+          </div>
+
+          <div class="export-btns">
+            <button class="btn-export-pdf" id="btn-export-pdf" onclick="exportarPDF()">
+              📄 Exportar PDF
+            </button>
+            <button class="btn-export-csv" id="btn-export-csv" onclick="exportarCSV()">
+              📊 Exportar CSV
+            </button>
+          </div>
+          <div style="font-size:11px;color:var(--text-3);margin-top:10px;text-align:center">
+            Sin filtros = todas las alertas
+          </div>
+        </div>
+
+        <!-- Panel de vista previa -->
+        <div class="preview-panel">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <h3>Vista previa</h3>
+            <button class="btn-secondary" style="padding:5px 14px;font-size:12px" onclick="actualizarPreview()">
+              🔄 Actualizar
+            </button>
+          </div>
+          <div class="preview-stats" id="preview-stats">
+            <div class="preview-stat"><div class="ps-num" id="ps-total">—</div><div class="ps-lbl">Total</div></div>
+            <div class="preview-stat" style="color:var(--red)"><div class="ps-num" id="ps-critical">—</div><div class="ps-lbl">Critical</div></div>
+            <div class="preview-stat" style="color:var(--orange)"><div class="ps-num" id="ps-high">—</div><div class="ps-lbl">High</div></div>
+            <div class="preview-stat" style="color:var(--yellow)"><div class="ps-num" id="ps-medium">—</div><div class="ps-lbl">Medium</div></div>
+            <div class="preview-stat" style="color:var(--green)"><div class="ps-num" id="ps-low">—</div><div class="ps-lbl">Low</div></div>
+          </div>
+          <table class="preview-table">
+            <thead><tr>
+              <th>Sev.</th><th>Agente</th><th>Resumen</th><th>Estado</th><th>Fecha</th>
+            </tr></thead>
+            <tbody id="preview-tbody">
+              <tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-2)">
+                Usá los filtros y hacé clic en Actualizar
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <!-- ── Página: Config FIM ───────────────────────────── -->
     <div class="page" id="page-config">
       <div class="config-card">
@@ -679,6 +961,23 @@ nav { flex:1; padding:10px 0; overflow-y:auto; }
       </div>
     </div>
 
+    <!-- ── Página: Roles (admin) ────────────────────────── -->
+    <div class="page" id="page-roles">
+      <div class="flex-between">
+        <div>
+          <div style="font-size:15px;font-weight:700">Gestión de Roles y Permisos</div>
+          <div style="font-size:13px;color:var(--text-2);margin-top:2px">
+            Definí qué puede hacer cada rol. Los roles builtin (admin, analista) no pueden eliminarse.
+          </div>
+        </div>
+        <button class="btn-primary" onclick="openCrearRol()">+ Nuevo rol</button>
+      </div>
+      <div style="height:16px"></div>
+      <div class="roles-grid" id="roles-grid">
+        <div class="empty"><span class="empty-icon">🎭</span>Cargando roles…</div>
+      </div>
+    </div>
+
     <!-- ── Página: Usuarios (admin) ─────────────────────── -->
     <div class="page" id="page-usuarios">
       <div class="flex-between">
@@ -688,17 +987,175 @@ nav { flex:1; padding:10px 0; overflow-y:auto; }
             Administradores y analistas del SIEM
           </div>
         </div>
-        <div style="display:flex;gap:8px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <label class="admin-only" style="display:flex;align-items:center;gap:8px;font-size:13px;
+                 color:var(--text-2);background:var(--bg-card);border:1px solid var(--border);
+                 border-radius:var(--radius);padding:6px 12px;cursor:pointer"
+                 title="Obliga a todos los usuarios a configurar 2FA">
+            <input type="checkbox" id="toggle-forzar-2fa" onchange="toggleForzar2FA(this.checked)"
+                   style="width:15px;height:15px;cursor:pointer"/>
+            Forzar 2FA
+          </label>
           <button class="btn-secondary" onclick="openCambiarPassword()">🔑 Mi contraseña</button>
-          <button class="btn-primary" onclick="openAddUsuario()">+ Agregar usuario</button>
+          <button class="btn-secondary" onclick="openTotpSetup()">🔐 Autenticador 2FA</button>
+          <button class="btn-primary admin-only" onclick="openAddUsuario()">+ Agregar usuario</button>
         </div>
       </div>
       <div style="height:16px"></div>
       <table class="user-table" id="user-table">
         <thead><tr>
-          <th>Usuario</th><th>Rol</th><th>Creado</th><th>Acciones</th>
+          <th>Usuario</th><th>Rol</th><th>2FA</th><th>Estado</th><th>Creado</th><th>Acciones</th>
         </tr></thead>
         <tbody id="user-tbody"></tbody>
+      </table>
+    </div>
+
+    <!-- ── Página: Seguridad (admin) ──────────────────────── -->
+    <div class="page" id="page-seguridad">
+      <div style="font-size:15px;font-weight:700;margin-bottom:4px">🛡️ Configuraciones de Seguridad</div>
+      <div style="font-size:13px;color:var(--text-2);margin-bottom:24px">Políticas globales del SIEM. Solo administradores.</div>
+
+      <div class="seg-grid">
+
+        <!-- Sesión -->
+        <div class="seg-card">
+          <div class="seg-card-title">⏱️ Sesión</div>
+          <div class="form-field">
+            <label>Timeout por inactividad (minutos)</label>
+            <input type="number" id="sec-session-timeout" min="5" max="480" value="30"/>
+            <div class="form-hint">El usuario es deslogueado si no hay actividad por este tiempo.</div>
+          </div>
+        </div>
+
+        <!-- Password Policy -->
+        <div class="seg-card">
+          <div class="seg-card-title">🔑 Política de Contraseñas</div>
+          <div class="form-field">
+            <label>Longitud mínima</label>
+            <input type="number" id="sec-pw-min-len" min="6" max="32" value="8"/>
+          </div>
+          <div class="seg-checks">
+            <label class="seg-check"><input type="checkbox" id="sec-pw-upper"/> Requerir mayúsculas (A-Z)</label>
+            <label class="seg-check"><input type="checkbox" id="sec-pw-number"/> Requerir números (0-9)</label>
+            <label class="seg-check"><input type="checkbox" id="sec-pw-special"/> Requerir caracteres especiales (!@#...)</label>
+          </div>
+        </div>
+
+        <!-- Lockout -->
+        <div class="seg-card">
+          <div class="seg-card-title">🔒 Bloqueo por Intentos Fallidos</div>
+          <div class="form-field">
+            <label>Máximo de intentos antes de bloquear</label>
+            <input type="number" id="sec-max-intentos" min="3" max="20" value="5"/>
+          </div>
+          <div class="form-field">
+            <label>Duración del bloqueo (minutos)</label>
+            <input type="number" id="sec-bloqueo-min" min="1" max="1440" value="15"/>
+          </div>
+        </div>
+
+        <!-- Retención de alertas -->
+        <div class="seg-card">
+          <div class="seg-card-title">🗄️ Retención de Alertas</div>
+          <div class="form-field">
+            <label>Días de retención</label>
+            <input type="number" id="sec-retencion-dias" min="0" max="3650" value="90"/>
+            <div class="form-hint">Las alertas más antiguas se eliminan automáticamente cada 24 horas. Ingresá <strong>0</strong> para retención indefinida.</div>
+          </div>
+        </div>
+
+        <!-- Telegram -->
+        <div class="seg-card" style="grid-column:1/-1">
+          <div class="seg-card-title">📨 Notificaciones Telegram</div>
+          <div style="font-size:12px;color:var(--text-2);margin-bottom:14px">
+            Recibí alertas <strong>CRITICAL</strong> automáticamente en tu chat o grupo de Telegram.
+            <a href="https://core.telegram.org/bots#how-do-i-create-a-bot" target="_blank" style="color:var(--blue)">¿Cómo crear un bot?</a>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+            <div class="form-field">
+              <label>Bot Token</label>
+              <input type="password" id="sec-tg-token" placeholder="123456:ABC-DEF1234ghIkl-zyx57W2..."/>
+              <div class="form-hint">Obtenelo de <strong>@BotFather</strong> en Telegram.</div>
+            </div>
+            <div class="form-field">
+              <label>Chat ID</label>
+              <input type="text" id="sec-tg-chatid" placeholder="-1001234567890"/>
+              <div class="form-hint">Tu ID personal o el ID del grupo. Usá <strong>@userinfobot</strong>.</div>
+            </div>
+          </div>
+          <div id="tg-status" style="margin:10px 0;font-size:12px;color:var(--text-2)"></div>
+          <div style="display:flex;gap:10px;align-items:center;margin-top:4px">
+            <label class="seg-check" style="margin:0">
+              <input type="checkbox" id="sec-tg-activo"/> Activar notificaciones
+            </label>
+            <button class="btn-secondary" style="font-size:12px;padding:6px 14px"
+                    onclick="testTelegram()">📨 Enviar prueba</button>
+          </div>
+        </div>
+
+      </div><!-- .seg-grid -->
+
+      <div style="margin-top:24px;display:flex;gap:10px">
+        <button class="btn-primary" onclick="guardarSeguridad()">💾 Guardar políticas</button>
+        <button class="btn-secondary" onclick="guardarTelegram()">💾 Guardar Telegram</button>
+      </div>
+    </div>
+
+    <!-- ── Página: Auditoría (admin) ─────────────────────── -->
+    <div class="page" id="page-auditoria">
+      <div class="flex-between">
+        <div>
+          <div style="font-size:15px;font-weight:700">Log de Auditoría</div>
+          <div style="font-size:13px;color:var(--text-2);margin-top:2px">
+            Registro de acciones, cambios de configuración y eventos de seguridad del sistema
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn-secondary" style="font-size:12px;padding:7px 14px"
+            onclick="exportarAuditoriaPDF()">📄 PDF</button>
+          <button class="btn-secondary" style="font-size:12px;padding:7px 14px"
+            onclick="exportarAuditoriaCSV()">📊 CSV</button>
+          <button class="btn-secondary" style="font-size:12px;padding:7px 14px"
+            onclick="aplicarFiltrosAuditoria()">🔄 Aplicar</button>
+        </div>
+      </div>
+
+      <!-- Barra de filtros -->
+      <div class="filtros-bar" style="margin-top:16px">
+        <span class="label">Período:</span>
+        <input type="date" id="aud-desde" style="font-size:12px;padding:5px 10px" title="Desde"/>
+        <span style="color:var(--text-3);font-size:12px">→</span>
+        <input type="date" id="aud-hasta" style="font-size:12px;padding:5px 10px" title="Hasta"/>
+        <div class="sep"></div>
+        <span class="label">Usuario:</span>
+        <input type="search" id="aud-usuario" placeholder="Buscar usuario…"
+               style="font-size:12px;padding:5px 12px;width:160px"
+               oninput="aplicarFiltrosAuditoria()"/>
+        <div class="sep"></div>
+        <span class="label">Acción:</span>
+        <select id="aud-accion" style="font-size:12px;padding:5px 10px"
+                onchange="aplicarFiltrosAuditoria()">
+          <option value="">Todas</option>
+        </select>
+        <button class="btn-filtro" style="margin-left:4px"
+          onclick="limpiarFiltrosAuditoria()">✕ Limpiar</button>
+      </div>
+
+      <div style="height:8px"></div>
+      <div id="audit-count" style="font-size:12px;color:var(--text-2);margin-bottom:10px"></div>
+
+      <table class="user-table" id="audit-table">
+        <thead><tr>
+          <th>Fecha</th>
+          <th>Usuario</th>
+          <th>Acción</th>
+          <th>Entidad</th>
+          <th>Valor anterior</th>
+          <th>Valor nuevo</th>
+        </tr></thead>
+        <tbody id="audit-tbody">
+          <tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-2)">Cargando…</td></tr>
+        </tbody>
       </table>
     </div>
 
@@ -723,11 +1180,19 @@ nav { flex:1; padding:10px 0; overflow-y:auto; }
 // ══════════════════════════════════════════════════════════════
 // ESTADO GLOBAL
 // ══════════════════════════════════════════════════════════════
-let currentUser  = null;  // {username, rol} del usuario logueado
-let todasAlertas = [];    // cache de alertas (se refresca cada 30s)
-let filtroSev    = "todas";
-let filtroEst    = "todos";
-let currentPage  = "overview";
+let currentUser    = null;  // {username, rol, permisos:[...]} del usuario logueado
+let todasAlertas   = [];    // cache de alertas (se refresca cada 30s)
+let filtroSev      = "todas";
+let filtroEst      = "todos";
+let currentPage    = "overview";
+let todosPermisos  = [];    // catálogo completo de permisos (cargado al entrar a Roles)
+let todosRoles     = [];    // cache de roles
+
+// Comprueba si el usuario actual tiene un permiso específico
+function tienePermiso(codigo) {
+  if (!currentUser) return false;
+  return (currentUser.permisos || []).includes(codigo);
+}
 
 // ── API wrapper: agrega el token Bearer en cada request ──────
 async function api(method, path, body = null) {
@@ -787,6 +1252,7 @@ function relTime(ts) {
 function showLogin() {
   document.getElementById("login-page").style.display = "flex";
   document.getElementById("app").style.display = "none";
+  document.body.classList.remove("is-admin");
 }
 
 function showApp(user) {
@@ -799,9 +1265,19 @@ function showApp(user) {
   document.getElementById("user-rol").textContent    = user.rol === "admin" ? "Administrador" : "Analista";
   document.getElementById("user-avatar").textContent = user.username[0].toUpperCase();
 
-  // Mostrar secciones de admin si corresponde
+  // Mostrar secciones de admin (nav items con .admin-only)
   if (user.rol === "admin") {
-    document.querySelectorAll(".admin-only").forEach(el => el.style.display = "");
+    document.body.classList.add("is-admin");
+  }
+
+  // Ocultar nav items de reportes/config si no tiene los permisos
+  if (!tienePermiso("ver_reportes")) {
+    const n = document.getElementById("nav-reportes");
+    if (n) n.style.display = "none";
+  }
+  if (!tienePermiso("ver_config")) {
+    const n = document.getElementById("nav-config");
+    if (n) n.style.display = "none";
   }
 
   loadAllData();
@@ -824,6 +1300,16 @@ async function checkSession() {
     showLogin();
   }
 }
+
+async function recargarPermisos() {
+  const res = await api("GET", "/api/me");
+  if (res && res.ok) {
+    const data = await res.json();
+    if (currentUser) currentUser.permisos = data.permisos || [];
+  }
+}
+
+let _totpToken = null;  // token temporal para el paso 2 del login
 
 async function doLogin() {
   const username = document.getElementById("login-user").value.trim();
@@ -849,10 +1335,21 @@ async function doLogin() {
     });
     const data = await res.json();
 
-    if (res.ok) {
+    if (res.ok && data.requiere_totp) {
+      // Tiene TOTP → mostrar paso 2
+      _totpToken = data.totp_token;
+      document.getElementById("login-step-1").style.display = "none";
+      document.getElementById("login-step-2").style.display = "block";
+      document.getElementById("login-subtitle").textContent = "Verificación en dos pasos";
+      errEl.style.display = "none";
+      setTimeout(() => document.getElementById("login-totp-code").focus(), 100);
+    } else if (res.ok) {
       sessionStorage.setItem("siem_token", data.token);
       if (data.debe_cambiar_password) {
         showForcedPasswordChange();
+      } else if (data.requiere_setup_2fa) {
+        showApp({ username: data.username, rol: data.rol });
+        setTimeout(() => openTotpSetupObligatorio(), 500);
       } else {
         showApp({ username: data.username, rol: data.rol });
       }
@@ -867,6 +1364,64 @@ async function doLogin() {
     btn.disabled    = false;
     btn.textContent = "Iniciar sesión";
   }
+}
+
+async function submitLoginTotp() {
+  const code  = document.getElementById("login-totp-code").value.trim();
+  const btn   = document.getElementById("login-totp-btn");
+  const errEl = document.getElementById("login-error");
+
+  if (code.length !== 6) {
+    errEl.textContent = "El código debe tener 6 dígitos.";
+    errEl.style.display = "block";
+    return;
+  }
+
+  btn.disabled    = true;
+  btn.textContent = "Verificando…";
+  errEl.style.display = "none";
+
+  try {
+    const res  = await fetch("/api/login/totp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ totp_token: _totpToken, code })
+    });
+    const data = await res.json();
+
+    if (res.ok) {
+      _totpToken = null;
+      sessionStorage.setItem("siem_token", data.token);
+      if (data.debe_cambiar_password) {
+        showForcedPasswordChange();
+      } else if (data.requiere_setup_2fa) {
+        showApp({ username: data.username, rol: data.rol });
+        setTimeout(() => openTotpSetupObligatorio(), 500);
+      } else {
+        showApp({ username: data.username, rol: data.rol });
+      }
+    } else {
+      errEl.textContent   = data.error || "Código incorrecto.";
+      errEl.style.display = "block";
+      document.getElementById("login-totp-code").value = "";
+      document.getElementById("login-totp-code").focus();
+    }
+  } catch (e) {
+    errEl.textContent   = "No se pudo conectar con el servidor.";
+    errEl.style.display = "block";
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = "Verificar";
+  }
+}
+
+function cancelarTotp() {
+  _totpToken = null;
+  document.getElementById("login-step-1").style.display = "block";
+  document.getElementById("login-step-2").style.display = "none";
+  document.getElementById("login-subtitle").textContent = "Sistema de Monitoreo de Seguridad Local";
+  document.getElementById("login-totp-code").value = "";
+  document.getElementById("login-error").style.display = "none";
 }
 
 async function doLogout() {
@@ -887,8 +1442,15 @@ document.getElementById("login-user").addEventListener("keydown", e => {
 // NAVEGACIÓN
 // ══════════════════════════════════════════════════════════════
 const PAGE_TITLES = {
-  overview: "Resumen", alertas: "Alertas", agentes: "Agentes",
-  config: "Configuración FIM", usuarios: "Usuarios"
+  overview:  "Resumen",
+  alertas:   "Alertas",
+  agentes:   "Agentes",
+  reportes:  "Reportes",
+  config:    "Configuración FIM",
+  roles:     "Roles y Permisos",
+  usuarios:  "Usuarios",
+  auditoria: "Auditoría",
+  seguridad: "Configuraciones de Seguridad",
 };
 
 function goPage(page, el) {
@@ -900,11 +1462,15 @@ function goPage(page, el) {
   document.getElementById("topbar-title").textContent = PAGE_TITLES[page] || page;
 
   // Cargar datos específicos de cada página
-  if (page === "overview")  renderOverview();
-  if (page === "alertas")   renderAlertas();
-  if (page === "agentes")   loadAgentes();
-  if (page === "config")    loadConfig();
-  if (page === "usuarios")  loadUsuarios();
+  if (page === "overview")   renderOverview();
+  if (page === "alertas")    renderAlertas();
+  if (page === "agentes")    loadAgentes();
+  if (page === "reportes")   initReportes();
+  if (page === "config")     loadConfig();
+  if (page === "roles")      loadRoles();
+  if (page === "usuarios")   loadUsuarios();
+  if (page === "auditoria")  loadAuditoria();
+  if (page === "seguridad")  loadSeguridad();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -923,6 +1489,14 @@ async function loadAlertas() {
   if (res && res.ok) {
     todasAlertas = await res.json();
     updateBadges();
+    // Poblar dropdown de agentes con los que existen en las alertas
+    const sel = document.getElementById("filtro-agente");
+    if (sel) {
+      const agentes = [...new Set(todasAlertas.map(a => a.fuente).filter(Boolean))].sort();
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">Todos</option>' +
+        agentes.map(ag => `<option value="${ag}" ${ag===cur?'selected':''}>${ag}</option>`).join("");
+    }
     if (currentPage === "alertas")   renderAlertas();
     if (currentPage === "overview")  renderOverview();
   }
@@ -959,6 +1533,144 @@ function startAutoRefresh() {
 // ══════════════════════════════════════════════════════════════
 // PÁGINA: OVERVIEW
 // ══════════════════════════════════════════════════════════════
+
+// Referencias a instancias de Chart.js (para destruir antes de recrear)
+let _chartDonut = null, _chartAgentes = null, _chartTendencia = null;
+
+function _destroyCharts() {
+  if (_chartDonut)     { _chartDonut.destroy();     _chartDonut     = null; }
+  if (_chartAgentes)   { _chartAgentes.destroy();   _chartAgentes   = null; }
+  if (_chartTendencia) { _chartTendencia.destroy(); _chartTendencia = null; }
+}
+
+function _chartDefaults() {
+  // Colores de tema oscuro para todos los gráficos
+  Chart.defaults.color           = "#8b949e";
+  Chart.defaults.borderColor     = "#30363d";
+  Chart.defaults.font.family     = "'Segoe UI', system-ui, sans-serif";
+  Chart.defaults.font.size       = 12;
+}
+
+function renderCharts() {
+  if (typeof Chart === "undefined") return;   // CDN todavía no cargó
+  _chartDefaults();
+  _destroyCharts();
+
+  // ── 1. Donut: distribución por severidad ─────────────────
+  const cnt = { critical:0, high:0, medium:0, low:0 };
+  todasAlertas.forEach(a => { if (cnt[a.severity] !== undefined) cnt[a.severity]++; });
+
+  const ctxD = document.getElementById("chart-donut");
+  if (ctxD) {
+    _chartDonut = new Chart(ctxD, {
+      type: "doughnut",
+      data: {
+        labels: ["Critical","High","Medium","Low"],
+        datasets: [{
+          data:            [cnt.critical, cnt.high, cnt.medium, cnt.low],
+          backgroundColor: ["#f85149","#f0883e","#e3b341","#3fb950"],
+          borderColor:     "#161b22",
+          borderWidth:     3,
+          hoverOffset:     6,
+        }]
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        cutout: "68%",
+        plugins: {
+          legend: { position:"bottom", labels:{ padding:14, boxWidth:12, boxHeight:12 } },
+          tooltip: { callbacks: {
+            label: ctx => ` ${ctx.label}: ${ctx.parsed} alerta${ctx.parsed !== 1 ? "s" : ""}`
+          }}
+        }
+      }
+    });
+  }
+
+  // ── 2. Barra horizontal: alertas por agente ──────────────
+  const agentMap = {};
+  todasAlertas.forEach(a => {
+    const k = a.fuente || "desconocido";
+    agentMap[k] = (agentMap[k] || 0) + 1;
+  });
+  const agentEntries = Object.entries(agentMap)
+    .sort((a,b) => b[1]-a[1])
+    .slice(0, 8);           // máximo 8 agentes
+
+  const ctxA = document.getElementById("chart-agentes");
+  if (ctxA) {
+    _chartAgentes = new Chart(ctxA, {
+      type: "bar",
+      data: {
+        labels: agentEntries.map(e => e[0]),
+        datasets: [{
+          label: "Alertas",
+          data:  agentEntries.map(e => e[1]),
+          backgroundColor: "#388bfd99",
+          borderColor:     "#58a6ff",
+          borderWidth:     1,
+          borderRadius:    4,
+        }]
+      },
+      options: {
+        indexAxis: "y",
+        responsive:true, maintainAspectRatio:false,
+        plugins: { legend: { display:false } },
+        scales: {
+          x: { grid:{ color:"#21262d" }, ticks:{ precision:0 } },
+          y: { grid:{ display:false } }
+        }
+      }
+    });
+  }
+
+  // ── 3. Línea: alertas por día (últimos 7 días) ───────────
+  const hoy    = new Date();
+  const labels = [];
+  const dias   = {};
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(hoy);
+    d.setDate(d.getDate() - i);
+    const key = d.toISOString().slice(0, 10);   // "YYYY-MM-DD"
+    labels.push(key.slice(5));                   // "MM-DD"
+    dias[key] = 0;
+  }
+  todasAlertas.forEach(a => {
+    if (!a.timestamp) return;
+    const day = a.timestamp.slice(0, 10);
+    if (dias[day] !== undefined) dias[day]++;
+  });
+
+  const ctxT = document.getElementById("chart-tendencia");
+  if (ctxT) {
+    _chartTendencia = new Chart(ctxT, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [{
+          label:        "Alertas",
+          data:         Object.values(dias),
+          borderColor:  "#bc8cff",
+          backgroundColor: "rgba(188,140,255,.12)",
+          tension:      0.35,
+          fill:         true,
+          pointBackgroundColor: "#bc8cff",
+          pointRadius:  4,
+          pointHoverRadius: 6,
+        }]
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        plugins: { legend: { display:false } },
+        scales: {
+          x: { grid:{ color:"#21262d" } },
+          y: { grid:{ color:"#21262d" }, ticks:{ precision:0 }, min:0 }
+        }
+      }
+    });
+  }
+}
+
 async function renderOverview() {
   // Stats por severidad
   const cnt = { critical:0, high:0, medium:0, low:0 };
@@ -980,6 +1692,9 @@ async function renderOverview() {
     ${statCard("🟢","Resueltas",     est.resuelta,         "c-resuelta")}
     ${statCard("⚫","Falso positivo",est["falso-positivo"],"c-falso")}
   `;
+
+  // Gráficos
+  renderCharts();
 
   // Agentes (últimos contactos)
   await renderAgentesStrip();
@@ -1057,12 +1772,14 @@ document.querySelectorAll("[data-est]").forEach(btn => {
 });
 
 function renderAlertas() {
-  const lista  = document.getElementById("alertas-lista");
-  const search = (document.getElementById("search-alerta")?.value || "").toLowerCase();
+  const lista        = document.getElementById("alertas-lista");
+  const search       = (document.getElementById("search-alerta")?.value || "").toLowerCase();
+  const filtroAgente = document.getElementById("filtro-agente")?.value || "";
 
   const filtradas = todasAlertas.filter(a => {
-    if (filtroSev !== "todas" && a.severity !== filtroSev) return false;
-    if (filtroEst !== "todos" && a.estado   !== filtroEst) return false;
+    if (filtroSev    !== "todas" && a.severity !== filtroSev)       return false;
+    if (filtroEst    !== "todos" && a.estado   !== filtroEst)       return false;
+    if (filtroAgente && a.fuente !== filtroAgente)                  return false;
     if (search && !`${a.summary} ${a.fuente} ${a.ip}`.toLowerCase().includes(search)) return false;
     return true;
   });
@@ -1105,7 +1822,7 @@ function buildCard(a) {
 
   const eventos = (a.events || []).map(ev => `
     <div class="evento-item">
-      <span class="ev-id">${ev.id || "—"}</span>
+      <span class="ev-id">${(ev.id && !ev.id.startsWith("EVENT_ID")) ? ev.id : "—"}</span>
       <span>${ev.descripcion || "—"}${ev.riesgo ? ` <em style="color:var(--text-3)">· ${ev.riesgo}</em>` : ""}</span>
     </div>`).join("");
 
@@ -1123,7 +1840,7 @@ function buildCard(a) {
         ${(a.ocurrencias || 1) > 1 ? `<span class="badge-ocurrencias" title="Se repitió ${a.ocurrencias} veces">×${a.ocurrencias}</span>` : ""}
         <span class="card-summary">${a.summary || "—"}</span>
         <div class="card-meta">
-          <span class="card-agent">${a.fuente || "—"}</span>
+          <span class="card-agent ${(a.fuente||'').includes('ubuntu')||((a.fuente||'').includes('linux'))?'os-linux':(a.fuente||'').includes('windows')?'os-windows':(a.fuente||'').includes('aws')?'os-aws':''}">${a.fuente || "—"}</span>
           <span class="card-ts" title="Primera vez: ${a.timestamp}${(a.ocurrencias||1)>1?' · Última vez: '+a.ultima_vez:''}">
             ${relTime(a.timestamp)}${(a.ocurrencias||1) > 1 ? ` · última: ${relTime(a.ultima_vez)}` : ""}
           </span>
@@ -1389,23 +2106,81 @@ async function loadUsuarios() {
   if (!res || !res.ok) return;
   const usuarios = await res.json();
   const tbody = document.getElementById("user-tbody");
-  tbody.innerHTML = usuarios.map(u => `
-    <tr>
-      <td><strong>${u.username}</strong></td>
-      <td><span class="badge ${u.rol}">${u.rol === "admin" ? "Administrador" : "Analista"}</span></td>
+
+  // Cargar estado del toggle Forzar 2FA
+  const resF = await api("GET", "/api/config/forzar-2fa");
+  if (resF && resF.ok) {
+    const { forzar_2fa } = await resF.json();
+    const chk = document.getElementById("toggle-forzar-2fa");
+    if (chk) chk.checked = forzar_2fa;
+  }
+
+  if (!usuarios.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-2)">Sin usuarios.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = usuarios.map(u => {
+    const esSelf     = u.username === currentUser?.username;
+    const estaActivo = u.activo !== 0;
+    const tiene2fa   = u.totp_activo === 1;
+    return `
+    <tr style="${!estaActivo ? 'opacity:.5' : ''}">
+      <td>
+        <strong>${u.username}</strong>
+        ${esSelf ? ' <span style="font-size:11px;color:var(--text-3)">(vos)</span>' : ''}
+      </td>
+      <td><span class="badge ${u.rol}">${u.rol_nombre || (u.rol === "admin" ? "Administrador" : "Analista")}</span></td>
+      <td style="text-align:center">
+        ${tiene2fa
+          ? '<span title="2FA configurado" style="font-size:16px">🔐</span>'
+          : '<span title="Sin 2FA" style="font-size:16px;opacity:.35">🔓</span>'}
+      </td>
+      <td>
+        ${estaActivo
+          ? '<span style="color:var(--green);font-size:12px;font-weight:600">● Activo</span>'
+          : '<span style="color:var(--text-3);font-size:12px;font-weight:600">● Inactivo</span>'}
+      </td>
       <td style="color:var(--text-2)">${u.created_at ? u.created_at.split(" ")[0] : "—"}</td>
       <td>
         <div class="user-actions">
           <button class="btn-action" onclick="openCambiarPasswordAdmin(${u.id},'${u.username}')">
             🔑 Contraseña
           </button>
-          ${u.username !== currentUser?.username ? `
+          ${!esSelf ? `
+            <button class="btn-action ${estaActivo ? 'warning' : 'success'}"
+              onclick="toggleUsuario(${u.id},'${u.username}',${estaActivo ? 0 : 1})">
+              ${estaActivo ? 'Deshabilitar' : 'Habilitar'}
+            </button>
             <button class="btn-action danger" onclick="eliminarUsuario(${u.id},'${u.username}')">
               Eliminar
-            </button>` : `<span style="font-size:12px;color:var(--text-3)">(sos vos)</span>`}
+            </button>` : ''}
         </div>
       </td>
-    </tr>`).join("");
+    </tr>`;
+  }).join("");
+}
+
+async function toggleForzar2FA(activar) {
+  const res = await api("POST", "/api/config/forzar-2fa", { forzar_2fa: activar });
+  if (res && res.ok) {
+    toast(activar ? "2FA obligatorio activado para todos los usuarios." : "2FA obligatorio desactivado.", activar ? "success" : "warning");
+  } else {
+    toast("Error al cambiar la configuración.", "error");
+    // revertir el checkbox
+    const chk = document.getElementById("toggle-forzar-2fa");
+    if (chk) chk.checked = !activar;
+  }
+}
+
+async function toggleUsuario(id, username, nuevoActivo) {
+  const accion = nuevoActivo ? "habilitar" : "deshabilitar";
+  if (!confirm(`¿${accion.charAt(0).toUpperCase() + accion.slice(1)} al usuario "${username}"?`)) return;
+  const res = await api("POST", "/api/usuarios/toggle", { id, activo: nuevoActivo });
+  if (!res) return;
+  const d = await res.json();
+  if (res.ok) { loadUsuarios(); toast(`Usuario "${username}" ${nuevoActivo ? "habilitado" : "deshabilitado"}.`); }
+  else toast(d.error || "Error al cambiar estado.", "error");
 }
 
 function openAddUsuario() {
@@ -1560,6 +2335,667 @@ async function cambiarPasswordAdmin(id) {
 }
 
 // ══════════════════════════════════════════════════════════════
+// PÁGINA: REPORTES
+// ══════════════════════════════════════════════════════════════
+function getFiltrosReporte() {
+  const desde  = document.getElementById("r-desde")?.value  || null;
+  const hasta  = document.getElementById("r-hasta")?.value  || null;
+  const sevs   = [...document.querySelectorAll(".r-sev:checked")].map(c => c.value);
+  const ests   = [...document.querySelectorAll(".r-est:checked")].map(c => c.value);
+  const fuents = [...document.querySelectorAll(".r-fuente:checked")].map(c => c.value);
+  return {
+    fecha_desde: desde || undefined,
+    fecha_hasta: hasta || undefined,
+    severidades: sevs.length  ? sevs   : undefined,
+    estados:     ests.length  ? ests   : undefined,
+    fuentes:     fuents.length? fuents : undefined,
+  };
+}
+
+async function initReportes() {
+  // Cargar agentes disponibles para el filtro
+  const res = await api("GET", "/api/agentes");
+  if (res && res.ok) {
+    const agentes = await res.json();
+    const cont    = document.getElementById("r-agentes-checks");
+    if (cont) {
+      cont.innerHTML = agentes.length
+        ? agentes.map(a => `
+            <label class="check-item">
+              <input type="checkbox" class="r-fuente" value="${a.nombre}">
+              <label>${a.nombre}</label>
+            </label>`).join("")
+        : '<span style="font-size:12px;color:var(--text-3)">Sin agentes registrados.</span>';
+    }
+  }
+  actualizarPreview();
+}
+
+async function actualizarPreview() {
+  const tbody = document.getElementById("preview-tbody");
+  tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-2)">Cargando…</td></tr>`;
+
+  const filtros  = getFiltrosReporte();
+  const res      = await api("POST", "/api/reportes/preview", filtros);
+  if (!res || !res.ok) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--red);padding:20px">Error al cargar.</td></tr>`;
+    return;
+  }
+  const alertas = await res.json();
+
+  // Stats
+  const cnt = { critical:0, high:0, medium:0, low:0 };
+  alertas.forEach(a => { if (cnt[a.severity] !== undefined) cnt[a.severity]++; });
+  document.getElementById("ps-total").textContent    = alertas.length;
+  document.getElementById("ps-critical").textContent = cnt.critical;
+  document.getElementById("ps-high").textContent     = cnt.high;
+  document.getElementById("ps-medium").textContent   = cnt.medium;
+  document.getElementById("ps-low").textContent      = cnt.low;
+
+  if (!alertas.length) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-2)">Sin resultados para los filtros aplicados.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = alertas.slice(0, 50).map(a => `
+    <tr>
+      <td><span class="badge ${a.severity}" style="font-size:10px">${a.severity}</span></td>
+      <td style="color:var(--text-2);font-size:11px">${a.fuente || "—"}</td>
+      <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(a.summary || "—")}</td>
+      <td><span class="badge-estado ${a.estado}" style="font-size:10px">${labelEstado(a.estado)}</span></td>
+      <td style="color:var(--text-2);font-size:11px;white-space:nowrap">${a.timestamp ? a.timestamp.split(" ")[0] : "—"}</td>
+    </tr>`).join("");
+
+  if (alertas.length > 50) {
+    tbody.innerHTML += `<tr><td colspan="5" style="text-align:center;font-size:11px;color:var(--text-3);padding:8px">
+      … y ${alertas.length - 50} más (todos se incluyen en el PDF/CSV)
+    </td></tr>`;
+  }
+}
+
+async function exportarPDF() {
+  const btn = document.getElementById("btn-export-pdf");
+  btn.textContent = "Generando…"; btn.disabled = true;
+  try {
+    const filtros = getFiltrosReporte();
+    const res = await api("POST", "/api/reportes/pdf", filtros);
+    if (!res || !res.ok) { toast("Error generando PDF.", "error"); return; }
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url; a.download = `reporte_siem_${new Date().toISOString().slice(0,10)}.pdf`;
+    a.click(); URL.revokeObjectURL(url);
+    toast("PDF descargado.");
+  } catch(e) { toast("Error: " + e.message, "error"); }
+  finally { btn.innerHTML = "📄 Exportar PDF"; btn.disabled = false; }
+}
+
+async function exportarCSV() {
+  const btn = document.getElementById("btn-export-csv");
+  btn.textContent = "Generando…"; btn.disabled = true;
+  try {
+    const filtros = getFiltrosReporte();
+    const res = await api("POST", "/api/reportes/csv", filtros);
+    if (!res || !res.ok) { toast("Error generando CSV.", "error"); return; }
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url; a.download = `alertas_siem_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+    toast("CSV descargado.");
+  } catch(e) { toast("Error: " + e.message, "error"); }
+  finally { btn.innerHTML = "📊 Exportar CSV"; btn.disabled = false; }
+}
+
+// ══════════════════════════════════════════════════════════════
+// PÁGINA: ROLES Y PERMISOS
+// ══════════════════════════════════════════════════════════════
+async function loadRoles() {
+  const [resRoles, resPermisos] = await Promise.all([
+    api("GET", "/api/roles"),
+    api("GET", "/api/permisos"),
+  ]);
+  if (!resRoles || !resRoles.ok) return;
+  todosRoles    = await resRoles.json();
+  todosPermisos = resPermisos && resPermisos.ok ? await resPermisos.json() : [];
+  renderRoles();
+}
+
+function renderRoles() {
+  const grid = document.getElementById("roles-grid");
+  if (!todosRoles.length) {
+    grid.innerHTML = `<div class="empty"><span class="empty-icon">🎭</span>Sin roles.</div>`;
+    return;
+  }
+  grid.innerHTML = todosRoles.map(r => buildRolCard(r)).join("");
+}
+
+function buildRolCard(rol) {
+  // Agrupar permisos del sistema por categoría
+  const cats = {};
+  todosPermisos.forEach(p => {
+    if (!cats[p.categoria]) cats[p.categoria] = [];
+    cats[p.categoria].push(p);
+  });
+  const rolPermIds = new Set(rol.permisos.map(p => p.id));
+
+  const matrizHTML = Object.entries(cats).map(([cat, perms]) => `
+    <div>
+      <div class="perm-categoria">${cat}</div>
+      <div class="permisos-grid">
+        ${perms.map(p => {
+          const activo   = rolPermIds.has(p.id);
+          // Solo el rol 'admin' es solo-lectura; analista y custom son editables
+          const readonly = rol.nombre === "admin";
+          const disabled = readonly ? "disabled-perm" : "";
+          return `<div class="perm-toggle ${activo ? "active" : ""} ${disabled}"
+            data-rol="${rol.id}" data-perm="${p.id}" data-readonly="${readonly}"
+            onclick="togglePermiso(this)"
+            title="${readonly ? 'El rol admin siempre tiene todos los permisos' : p.descripcion}">
+            <span class="perm-dot"></span>${p.codigo.replace(/_/g," ")}
+          </div>`;
+        }).join("")}
+      </div>
+    </div>
+  `).join("");
+
+  // Solo el rol 'admin' es intocable. Analista y roles custom pueden eliminarse.
+  const acciones = rol.nombre !== "admin" ? `
+    <button class="btn-danger" style="padding:5px 12px;font-size:12px;margin-top:14px"
+      onclick="eliminarRol(${rol.id},'${rol.nombre}')">🗑️ Eliminar rol</button>` : "";
+
+  return `
+    <div class="rol-card" id="rol-card-${rol.id}">
+      <div class="rol-card-header">
+        <div class="rol-card-title">
+          🎭 ${rol.nombre}
+          ${rol.es_builtin ? '<span class="rol-builtin-badge">builtin</span>' : ""}
+        </div>
+      </div>
+      <div class="rol-card-desc">${rol.descripcion || "Sin descripción"}</div>
+      <div class="permisos-matrix">${matrizHTML}</div>
+      ${acciones}
+    </div>`;
+}
+
+async function togglePermiso(el) {
+  if (el.dataset.readonly === "true") return; // admin → solo lectura
+  const rolId   = parseInt(el.dataset.rol);
+  const permId  = parseInt(el.dataset.perm);
+  const activo  = el.classList.contains("active");
+
+  // Calcular nuevo set de permisos para este rol
+  const rol = todosRoles.find(r => r.id === rolId);
+  if (!rol) return;
+  const ids = new Set(rol.permisos.map(p => p.id));
+  if (activo) ids.delete(permId); else ids.add(permId);
+
+  const res = await api("POST", "/api/roles/permisos", {
+    rol_id: rolId, permiso_ids: [...ids]
+  });
+  if (res && res.ok) {
+    el.classList.toggle("active");
+    // Sync cache local
+    if (activo) {
+      rol.permisos = rol.permisos.filter(p => p.id !== permId);
+    } else {
+      const p = todosPermisos.find(p => p.id === permId);
+      if (p) rol.permisos.push(p);
+    }
+    toast(`Permiso ${activo ? "removido" : "agregado"}.`);
+  } else {
+    toast("Error al actualizar permiso.", "error");
+  }
+}
+
+function openCrearRol() {
+  openModal("Nuevo Rol", `
+    <div class="form-field">
+      <label>Nombre del rol</label>
+      <input type="text" id="nr-nombre" placeholder="ej: auditor" autocomplete="off"/>
+    </div>
+    <div class="form-field">
+      <label>Descripción</label>
+      <input type="text" id="nr-desc" placeholder="Qué puede hacer este rol…"/>
+    </div>
+    <div class="form-actions">
+      <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn-primary" onclick="crearRol()">Crear rol</button>
+    </div>`);
+}
+
+async function crearRol() {
+  const nombre = document.getElementById("nr-nombre").value.trim();
+  const desc   = document.getElementById("nr-desc").value.trim();
+  if (!nombre) { toast("El nombre es obligatorio.", "warning"); return; }
+  const res = await api("POST", "/api/roles/crear", { nombre, descripcion: desc });
+  if (!res) return;
+  const d = await res.json();
+  if (res.ok) { closeModal(); loadRoles(); toast(`Rol "${nombre}" creado.`); }
+  else toast(d.error || "Error.", "error");
+}
+
+async function eliminarRol(id, nombre) {
+  if (!confirm(`¿Eliminar el rol "${nombre}"?\nLos usuarios con este rol quedarán sin rol asignado.`)) return;
+  const res = await api("POST", "/api/roles/eliminar", { id });
+  if (!res) return;
+  const d = await res.json();
+  if (res.ok) { loadRoles(); toast(`Rol "${nombre}" eliminado.`); }
+  else toast(d.error || "Error.", "error");
+}
+
+// ══════════════════════════════════════════════════════════════
+// TOTP — OLVIDÉ MI CONTRASEÑA
+// ══════════════════════════════════════════════════════════════
+function openRecuperarPassword() {
+  openModal("Recuperar contraseña", `
+    <div style="font-size:13px;color:var(--text-2);margin-bottom:16px">
+      Ingresá tu usuario y el código de 6 dígitos de tu app autenticadora (Google Authenticator, Authy, etc.)
+    </div>
+    <div class="form-field">
+      <label>Usuario</label>
+      <input type="text" id="rec-user" placeholder="admin" autocomplete="username"/>
+    </div>
+    <div class="form-field">
+      <label>Código del autenticador</label>
+      <input type="text" id="rec-totp" placeholder="123456" maxlength="6"
+             inputmode="numeric" autocomplete="one-time-code"
+             style="letter-spacing:4px;font-size:18px;text-align:center"/>
+    </div>
+    <div class="form-field">
+      <label>Nueva contraseña</label>
+      <input type="password" id="rec-pass" placeholder="Mínimo 6 caracteres"/>
+    </div>
+    <div class="form-actions">
+      <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn-primary" onclick="submitRecuperarPassword()">Recuperar</button>
+    </div>
+    <div class="form-note">
+      <strong>¿No tenés autenticador configurado?</strong>
+      Contactá al administrador para que resetee tu contraseña desde la sección Usuarios.
+    </div>`);
+}
+
+async function submitRecuperarPassword() {
+  const username      = document.getElementById("rec-user").value.trim();
+  const totp_codigo   = document.getElementById("rec-totp").value.trim();
+  const nueva_password= document.getElementById("rec-pass").value;
+  if (!username || !totp_codigo || !nueva_password) {
+    toast("Completá todos los campos.", "warning"); return;
+  }
+  const res = await api("POST", "/api/password/recuperar",
+    { username, totp_codigo, nueva_password });
+  if (!res) return;
+  const d = await res.json();
+  if (res.ok) {
+    closeModal();
+    toast("Contraseña actualizada. Iniciá sesión con tu nueva contraseña.", "success");
+  } else toast(d.error || "Error al recuperar contraseña.", "error");
+}
+
+// ══════════════════════════════════════════════════════════════
+// TOTP — CONFIGURAR AUTENTICADOR (desde perfil o página usuarios)
+// ══════════════════════════════════════════════════════════════
+async function openTotpSetupObligatorio() {
+  // Igual que openTotpSetup pero sin botón Cancelar y con mensaje de obligatoriedad
+  openModal("🔐 Configurar autenticador 2FA (obligatorio)", `
+    <div style="background:#1a0d00;border:1px solid var(--orange);border-radius:var(--radius);
+         padding:10px 14px;margin-bottom:16px;font-size:13px;color:var(--orange)">
+      ⚠️ Tu organización requiere que configures el autenticador 2FA antes de continuar.
+    </div>
+    <div style="text-align:center;padding:20px 0">
+      <div style="font-size:32px">⏳</div>
+      <div style="color:var(--text-2);font-size:13px;margin-top:8px">Generando código QR…</div>
+    </div>`, { noClose: true });
+
+  const res = await api("POST", "/api/totp/setup", {});
+  if (!res || !res.ok) { toast("Error al generar QR.", "error"); return; }
+  const { secret, uri, qr_b64 } = await res.json();
+
+  const qrHtml = qr_b64
+    ? `<img src="data:image/png;base64,${qr_b64}" style="width:160px;height:160px;display:block;margin:0 auto;border-radius:6px" alt="QR TOTP"/>`
+    : `<div style="font-size:12px;color:var(--text-2);padding:10px">QR no disponible. Usá la clave manual.</div>`;
+
+  openModal("🔐 Configurar autenticador 2FA (obligatorio)", `
+    <div style="background:#1a0d00;border:1px solid var(--orange);border-radius:var(--radius);
+         padding:10px 14px;margin-bottom:16px;font-size:13px;color:var(--orange)">
+      ⚠️ Tu organización requiere que configures el autenticador 2FA antes de continuar.
+    </div>
+    <div style="font-size:13px;color:var(--text-2);margin-bottom:12px">
+      <strong>1.</strong> Abrí Google Authenticator, Authy o similar.<br>
+      <strong>2.</strong> Escaneá el código QR o ingresá la clave manualmente.<br>
+      <strong>3.</strong> Ingresá el código de 6 dígitos para confirmar.
+    </div>
+    <div style="text-align:center;background:#fff;padding:12px;border-radius:8px;margin-bottom:14px">
+      ${qrHtml}
+    </div>
+    <details style="margin-bottom:14px">
+      <summary style="font-size:12px;color:var(--text-2);cursor:pointer">▶ Ver clave manual</summary>
+      <div style="font-family:monospace;font-size:13px;background:var(--bg);border:1px solid var(--border);
+           border-radius:6px;padding:10px;margin-top:8px;word-break:break-all;color:var(--yellow)">${secret}</div>
+    </details>
+    <div class="form-field">
+      <label>Código de verificación</label>
+      <input type="text" id="totp-verificar" placeholder="123456" maxlength="6"
+             inputmode="numeric" style="letter-spacing:4px;font-size:18px;text-align:center"
+             onkeydown="if(event.key==='Enter') submitActivarTotp('${secret}', true)"/>
+    </div>
+    <div class="form-actions">
+      <button class="btn-primary" style="width:100%" onclick="submitActivarTotp('${secret}', true)">Activar y continuar</button>
+    </div>`, { noClose: true });
+}
+
+async function openTotpSetup() {
+  openModal("Configurar autenticador 2FA", `
+    <div style="text-align:center;padding:20px 0">
+      <div style="font-size:32px">⏳</div>
+      <div style="color:var(--text-2);font-size:13px;margin-top:8px">Generando código QR…</div>
+    </div>`);
+
+  const res = await api("POST", "/api/totp/setup", {});
+  if (!res || !res.ok) { toast("Error al generar QR.", "error"); return; }
+  const { secret, uri, qr_b64 } = await res.json();
+
+  const qrHtml = qr_b64
+    ? `<img src="data:image/png;base64,${qr_b64}"
+            style="width:180px;height:180px;display:block;border-radius:6px"
+            alt="QR TOTP"/>`
+    : `<div style="font-size:12px;color:var(--text-2);padding:20px">
+         QR no disponible. Usá la clave manual abajo.
+       </div>`;
+
+  openModal("Configurar autenticador 2FA", `
+    <div style="font-size:13px;color:var(--text-2);margin-bottom:16px">
+      <strong>1.</strong> Abrí Google Authenticator, Authy o similar.<br>
+      <strong>2.</strong> Escaneá el código QR o ingresá la clave manualmente.<br>
+      <strong>3.</strong> Ingresá el código de 6 dígitos para confirmar.
+    </div>
+    <div style="text-align:center;margin:16px 0;background:#fff;display:inline-block;
+         padding:12px;border-radius:8px;width:100%">
+      ${qrHtml}
+    </div>
+    <details style="margin-bottom:14px">
+      <summary style="font-size:12px;color:var(--text-2);cursor:pointer">▶ Ver clave manual</summary>
+      <div style="font-family:monospace;font-size:13px;background:var(--bg);border:1px solid var(--border);
+           border-radius:6px;padding:10px;margin-top:8px;word-break:break-all;color:var(--yellow)">
+        ${secret}
+      </div>
+    </details>
+    <div class="form-field">
+      <label>Código de verificación</label>
+      <input type="text" id="totp-verificar" placeholder="123456" maxlength="6"
+             inputmode="numeric" style="letter-spacing:4px;font-size:18px;text-align:center"
+             onkeydown="if(event.key==='Enter') submitActivarTotp('${secret}')"/>
+    </div>
+    <div class="form-actions">
+      <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn-primary" onclick="submitActivarTotp('${secret}')">Activar</button>
+    </div>`);
+}
+
+async function submitActivarTotp(secret, obligatorio = false) {
+  const codigo = document.getElementById("totp-verificar").value.trim();
+  if (!codigo) { toast("Ingresá el código del autenticador.", "warning"); return; }
+  const res = await api("POST", "/api/totp/activar", { secret, codigo });
+  if (!res) return;
+  const d = await res.json();
+  if (res.ok) {
+    closeModal();
+    toast("Autenticador configurado correctamente. 🔐", "success");
+    if (obligatorio) loadUsuarios(); // refrescar tabla si viene del flujo obligatorio
+  } else toast(d.error || "Error.", "error");
+}
+
+// ══════════════════════════════════════════════════════════════
+// PÁGINA: SEGURIDAD GLOBAL
+// ══════════════════════════════════════════════════════════════
+async function loadSeguridad() {
+  // Cargar políticas de seguridad
+  const res = await api("GET", "/api/config/seguridad");
+  if (res && res.ok) {
+    const cfg = await res.json();
+    document.getElementById("sec-session-timeout").value  = cfg.session_timeout_minutos || 30;
+    document.getElementById("sec-pw-min-len").value       = cfg.password_min_length     || 8;
+    document.getElementById("sec-pw-upper").checked       = cfg.password_require_upper  === "1";
+    document.getElementById("sec-pw-number").checked      = cfg.password_require_number === "1";
+    document.getElementById("sec-pw-special").checked     = cfg.password_require_special=== "1";
+    document.getElementById("sec-max-intentos").value     = cfg.login_max_intentos      || 5;
+    document.getElementById("sec-bloqueo-min").value      = cfg.login_bloqueo_minutos   || 15;
+    document.getElementById("sec-retencion-dias").value   = cfg.alerta_retencion_dias   || 90;
+  }
+  // Cargar config Telegram
+  const resT = await api("GET", "/api/config/telegram");
+  if (resT && resT.ok) {
+    const tg = await resT.json();
+    document.getElementById("sec-tg-activo").checked = tg.activo;
+    document.getElementById("sec-tg-chatid").value   = tg.chat_id || "";
+    const statusEl = document.getElementById("tg-status");
+    if (tg.configurado) {
+      statusEl.innerHTML = `✅ Bot configurado — Token: <code>${tg.token_masked}</code>`;
+      statusEl.style.color = "var(--green)";
+    } else {
+      statusEl.textContent = "⚠️ No configurado aún.";
+      statusEl.style.color = "var(--yellow)";
+    }
+  }
+}
+
+async function guardarSeguridad() {
+  const body = {
+    session_timeout_minutos:  document.getElementById("sec-session-timeout").value,
+    password_min_length:      document.getElementById("sec-pw-min-len").value,
+    password_require_upper:   document.getElementById("sec-pw-upper").checked   ? "1" : "0",
+    password_require_number:  document.getElementById("sec-pw-number").checked  ? "1" : "0",
+    password_require_special: document.getElementById("sec-pw-special").checked ? "1" : "0",
+    login_max_intentos:       document.getElementById("sec-max-intentos").value,
+    login_bloqueo_minutos:    document.getElementById("sec-bloqueo-min").value,
+    alerta_retencion_dias:    document.getElementById("sec-retencion-dias").value,
+  };
+  const res = await api("POST", "/api/config/seguridad", body);
+  if (res && res.ok) {
+    toast("Políticas de seguridad guardadas correctamente.", "success");
+  } else {
+    const d = res ? await res.json() : {};
+    toast(d.error || "Error al guardar.", "error");
+  }
+}
+
+async function guardarTelegram() {
+  const token   = document.getElementById("sec-tg-token").value.trim();
+  const chat_id = document.getElementById("sec-tg-chatid").value.trim();
+  const activo  = document.getElementById("sec-tg-activo").checked;
+
+  if (!token && !chat_id) {
+    // Solo actualizar estado activo/inactivo
+    const res = await api("POST", "/api/config/telegram", { activo });
+    if (res && res.ok) toast(`Notificaciones Telegram ${activo ? "activadas" : "desactivadas"}.`);
+    return;
+  }
+  if (!token || !chat_id) {
+    toast("Ingresá tanto el Token como el Chat ID.", "warning"); return;
+  }
+
+  const statusEl = document.getElementById("tg-status");
+  statusEl.textContent = "⏳ Validando token con Telegram...";
+  statusEl.style.color = "var(--text-2)";
+
+  const res = await api("POST", "/api/config/telegram", { token, chat_id, activo });
+  if (!res) return;
+  const d = await res.json();
+  if (res.ok) {
+    statusEl.innerHTML = `✅ Bot <strong>@${d.bot_name}</strong> configurado correctamente.`;
+    statusEl.style.color = "var(--green)";
+    document.getElementById("sec-tg-token").value = ""; // limpiar campo por seguridad
+    toast("Configuración de Telegram guardada.", "success");
+  } else {
+    statusEl.textContent = `❌ ${d.error}`;
+    statusEl.style.color = "var(--red)";
+    toast(d.error || "Error.", "error");
+  }
+}
+
+async function testTelegram() {
+  const btn = event.target;
+  btn.disabled = true; btn.textContent = "⏳ Enviando...";
+  const res = await api("POST", "/api/config/telegram/test", {});
+  btn.disabled = false; btn.textContent = "📨 Enviar prueba";
+  if (!res) return;
+  const d = await res.json();
+  if (res.ok) toast("✅ Mensaje de prueba enviado a Telegram.", "success");
+  else toast(d.error || "Error al enviar.", "error");
+}
+
+// ══════════════════════════════════════════════════════════════
+// PÁGINA: AUDITORÍA
+// ══════════════════════════════════════════════════════════════
+const ETIQ_ACCION = {
+  login:                    "🔐 Inicio de sesión",
+  login_fallido:            "⛔ Login fallido",
+  logout:                   "🚪 Cierre de sesión",
+  cambio_password:          "🔑 Cambio de contraseña",
+  cambio_estado_alerta:     "🔄 Estado de alerta",
+  crear_usuario:            "👤 Usuario creado",
+  usuario_habilitado:       "✅ Usuario habilitado",
+  usuario_deshabilitado:    "🚫 Usuario deshabilitado",
+  eliminar_usuario:         "🗑️ Usuario eliminado",
+  reset_password_usuario:   "🔑 Reset de contraseña",
+  totp_activado:            "🔐 TOTP activado",
+  totp_desactivado:         "🔓 TOTP desactivado",
+  recuperar_password_totp:  "🔑 Recuperación por TOTP",
+  crear_rol:                "🎭 Rol creado",
+  eliminar_rol:             "🗑️ Rol eliminado",
+  modificar_permisos_rol:   "🔧 Permisos de rol modificados",
+  cambio_rol_usuario:       "🎭 Rol de usuario cambiado",
+};
+
+function getFiltrosAuditoria() {
+  return {
+    fecha_desde: document.getElementById("aud-desde")?.value  || undefined,
+    fecha_hasta: document.getElementById("aud-hasta")?.value  || undefined,
+    usuario:     document.getElementById("aud-usuario")?.value.trim() || undefined,
+    accion:      document.getElementById("aud-accion")?.value || undefined,
+  };
+}
+
+async function loadAuditoria() {
+  // Cargar opciones del dropdown de acciones
+  const resAcc = await api("GET", "/api/auditoria/acciones");
+  if (resAcc && resAcc.ok) {
+    const acciones = await resAcc.json();
+    const sel = document.getElementById("aud-accion");
+    if (sel) {
+      const actual = sel.value;
+      sel.innerHTML = '<option value="">Todas</option>' +
+        acciones.map(a => `<option value="${a}" ${a===actual?"selected":""}>${ETIQ_ACCION[a] || a}</option>`).join("");
+    }
+  }
+  await aplicarFiltrosAuditoria();
+}
+
+async function aplicarFiltrosAuditoria() {
+  const tbody = document.getElementById("audit-tbody");
+  tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-2)">Cargando…</td></tr>`;
+
+  const filtros = getFiltrosAuditoria();
+  const res = await api("POST", "/api/auditoria/filtrar", filtros);
+  if (!res || !res.ok) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--red)">Error al cargar auditoría.</td></tr>`;
+    return;
+  }
+  const registros = await res.json();
+
+  const countEl = document.getElementById("audit-count");
+  if (countEl) countEl.textContent = `${registros.length} registro${registros.length !== 1 ? "s" : ""}`;
+
+  renderAuditoria(registros);
+}
+
+function limpiarFiltrosAuditoria() {
+  ["aud-desde","aud-hasta","aud-usuario"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+  const sel = document.getElementById("aud-accion");
+  if (sel) sel.value = "";
+  aplicarFiltrosAuditoria();
+}
+
+async function exportarAuditoriaCSV() {
+  const filtros = getFiltrosAuditoria();
+  const res = await api("POST", "/api/auditoria/csv", filtros);
+  if (!res || !res.ok) { toast("Error generando CSV.", "error"); return; }
+  const blob = await res.blob();
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url;
+  a.download = `auditoria_siem_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast("CSV de auditoría descargado.");
+}
+
+async function exportarAuditoriaPDF() {
+  const filtros = getFiltrosAuditoria();
+  const res = await api("POST", "/api/auditoria/pdf", filtros);
+  if (!res || !res.ok) { toast("Error generando PDF.", "error"); return; }
+  const blob = await res.blob();
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url;
+  a.download = `auditoria_siem_${new Date().toISOString().slice(0,10)}.pdf`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast("PDF de auditoría descargado.");
+}
+
+function renderAuditoria(registros) {
+  const tbody = document.getElementById("audit-tbody");
+
+  if (!registros.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:50px;color:var(--text-2)">
+      <span style="font-size:32px;display:block;margin-bottom:10px;opacity:.4">📋</span>
+      Sin registros para los filtros seleccionados.
+    </td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = registros.map(r => {
+    const accionLabel = ETIQ_ACCION[r.accion] || r.accion;
+
+    // Color de fila según severidad de la acción
+    const rowColor = r.accion?.includes("fallido") || r.accion?.includes("eliminar")
+      ? 'style="background:rgba(248,81,73,.04)"'
+      : r.accion === "login"
+        ? 'style="background:rgba(63,185,80,.03)"'
+        : "";
+
+    const entidadStr = r.entidad
+      ? `<span style="font-size:11px;background:var(--bg-hover);border:1px solid var(--border);
+           border-radius:4px;padding:2px 6px;font-family:monospace">${escHtml(r.entidad)}${r.id_entidad ? ' <span style="opacity:.6">#</span>'+escHtml(r.id_entidad) : ''}</span>`
+      : '—';
+    const anterior = r.valor_anterior
+      ? `<span style="color:var(--red);font-size:12px">${escHtml(r.valor_anterior)}</span>` : '—';
+    const nuevo = r.valor_nuevo
+      ? `<span style="color:var(--green);font-size:12px">${escHtml(r.valor_nuevo)}</span>` : '—';
+
+    return `<tr ${rowColor}>
+      <td style="white-space:nowrap;color:var(--text-2);font-size:12px">${r.ts || '—'}</td>
+      <td><strong>${escHtml(r.usuario)}</strong></td>
+      <td>${accionLabel}</td>
+      <td>${entidadStr}</td>
+      <td style="max-width:200px">${anterior}</td>
+      <td style="max-width:300px;word-break:break-word">${nuevo}</td>
+    </tr>`;
+  }).join("");
+}
+
+function escHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+// ══════════════════════════════════════════════════════════════
 // PDF
 // ══════════════════════════════════════════════════════════════
 async function descargarPDF() {
@@ -1586,19 +3022,25 @@ async function descargarPDF() {
 // ══════════════════════════════════════════════════════════════
 // MODAL
 // ══════════════════════════════════════════════════════════════
-function openModal(title, bodyHTML) {
+let _modalNoClose = false;
+function openModal(title, bodyHTML, opts = {}) {
+  _modalNoClose = opts.noClose || false;
   document.getElementById("modal-title").textContent = title;
   document.getElementById("modal-body").innerHTML    = bodyHTML;
-  document.getElementById("modal").style.display     = "flex";
+  const modal = document.getElementById("modal");
+  modal.style.display = "flex";
+  // Ocultar botón X si es obligatorio
+  const closeBtn = modal.querySelector(".modal-close");
+  if (closeBtn) closeBtn.style.display = _modalNoClose ? "none" : "";
 }
 function closeModal(e) {
-  // Si se pasó un evento, solo cerrar si el click fue en el overlay
+  if (_modalNoClose) return; // no se puede cerrar
   if (e && e.target !== document.getElementById("modal")) return;
   document.getElementById("modal").style.display = "none";
 }
 document.addEventListener("keydown", e => {
   if (e.key === "Escape") {
-    // No cerrar si el overlay de cambio forzado está activo
+    if (_modalNoClose) return;
     if (document.getElementById("force-pw").classList.contains("show")) return;
     document.getElementById("modal").style.display = "none";
   }

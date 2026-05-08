@@ -4,6 +4,7 @@ import os
 import secrets
 from datetime import datetime, timedelta
 from pathlib import Path
+import encryption  # cifrado de campos sensibles
 
 # ─── CONFIGURACION ───────────────────────────────────────────
 # Raíz del proyecto: src/server/ → src/ → raíz
@@ -145,11 +146,96 @@ def init_db():
             )
         """)
 
+        # ── RBAC: Catálogo de permisos del sistema ───────────────────────────
+        # Inmutable desde código. 'codigo' es la clave que el backend valida.
+        # 'categoria' agrupa los permisos en la UI para mostrarlos en secciones.
+        #
+        # Jerarquía de acceso:
+        #   usuario.rol_id → roles → rol_permisos → permisos.codigo
+        #   Si rol_id es NULL → fallback por campo 'rol' TEXT (compat. legacy)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS permisos (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                codigo      TEXT UNIQUE NOT NULL,
+                descripcion TEXT,
+                categoria   TEXT
+            )
+        """)
+
+        # ── RBAC: Roles asignables a usuarios ────────────────────────────────
+        # es_builtin=1: admin y analista no se pueden eliminar ni renombrar.
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS roles (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre      TEXT UNIQUE NOT NULL,
+                descripcion TEXT,
+                es_builtin  INTEGER DEFAULT 0,
+                created_at  TEXT DEFAULT (datetime('now', 'localtime'))
+            )
+        """)
+
+        # ── RBAC: Relación N:M roles ↔ permisos ─────────────────────────────
+        # ON DELETE CASCADE: eliminar un rol limpia automáticamente sus permisos.
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS rol_permisos (
+                rol_id     INTEGER NOT NULL REFERENCES roles(id)    ON DELETE CASCADE,
+                permiso_id INTEGER NOT NULL REFERENCES permisos(id) ON DELETE CASCADE,
+                PRIMARY KEY (rol_id, permiso_id)
+            )
+        """)
+
+        # Semilla de permisos (INSERT OR IGNORE → idempotente en cada arranque)
+        _PERMISOS_SEED = [
+            ("ver_alertas",        "Ver lista de alertas",                        "alertas"),
+            ("gestionar_alertas",  "Cambiar estado y agregar comentarios",        "alertas"),
+            ("ver_agentes",        "Ver lista de agentes conectados",             "agentes"),
+            ("gestionar_agentes",  "Aprobar, desactivar y eliminar agentes",      "agentes"),
+            ("ver_config",         "Ver configuración FIM",                       "config"),
+            ("editar_config",      "Agregar y eliminar carpetas monitoreadas",    "config"),
+            ("ver_reportes",       "Ver pestaña de reportes",                     "reportes"),
+            ("exportar_reportes",  "Descargar PDF y CSV",                         "reportes"),
+            ("ver_usuarios",       "Ver gestión de usuarios",                     "usuarios"),
+            ("gestionar_usuarios", "Crear, deshabilitar y resetear usuarios",     "usuarios"),
+            ("ver_auditoria",      "Ver log de auditoría",                        "usuarios"),
+            ("gestionar_roles",    "Crear roles y modificar permisos",            "usuarios"),
+        ]
+        for codigo, desc, cat in _PERMISOS_SEED:
+            c.execute(
+                "INSERT OR IGNORE INTO permisos (codigo, descripcion, categoria) VALUES (?,?,?)",
+                (codigo, desc, cat)
+            )
+
+        # Semilla de roles builtin con IDs fijos para referencias reproducibles
+        c.execute("""INSERT OR IGNORE INTO roles (id, nombre, descripcion, es_builtin)
+                     VALUES (1, 'admin', 'Acceso completo al sistema', 1)""")
+        c.execute("""INSERT OR IGNORE INTO roles (id, nombre, descripcion, es_builtin)
+                     VALUES (2, 'analista', 'Puede ver y gestionar alertas y reportes', 1)""")
+
+        # Rol admin → todos los permisos
+        c.execute("""
+            INSERT OR IGNORE INTO rol_permisos (rol_id, permiso_id)
+            SELECT 1, id FROM permisos
+        """)
+
+        # Rol analista → subconjunto de permisos
+        for codigo in ("ver_alertas", "gestionar_alertas", "ver_agentes",
+                       "ver_reportes", "exportar_reportes"):
+            c.execute("""
+                INSERT OR IGNORE INTO rol_permisos (rol_id, permiso_id)
+                SELECT 2, id FROM permisos WHERE codigo = ?
+            """, (codigo,))
+
+        conn.commit()
+
         # Migraciones no destructivas para DBs existentes
         for migration in [
             "ALTER TABLE usuarios ADD COLUMN debe_cambiar_password INTEGER DEFAULT 0",
             "ALTER TABLE alertas ADD COLUMN ocurrencias INTEGER DEFAULT 1",
             "ALTER TABLE alertas ADD COLUMN ultima_vez TEXT",
+            # RBAC: clave foránea al rol del usuario
+            "ALTER TABLE usuarios ADD COLUMN rol_id INTEGER REFERENCES roles(id)",
+            # TOTP: secret base32 para recuperación de contraseña
+            "ALTER TABLE usuarios ADD COLUMN totp_secret TEXT",
         ]:
             try:
                 c.execute(migration)
@@ -159,6 +245,14 @@ def init_db():
 
         # Rellenar ultima_vez en filas antiguas que no la tienen
         c.execute("UPDATE alertas SET ultima_vez = timestamp WHERE ultima_vez IS NULL")
+
+        # Asignar rol_id a usuarios existentes que aún no lo tienen
+        # Mapea el campo 'rol' TEXT al id correspondiente en la tabla roles
+        c.execute("""
+            UPDATE usuarios
+            SET rol_id = (SELECT id FROM roles WHERE nombre = usuarios.rol)
+            WHERE rol_id IS NULL
+        """)
         conn.commit()
 
         # ── Sesiones activas ─────────────────────────────────────────────────
@@ -197,6 +291,87 @@ def init_db():
             )
         """)
 
+        # ── Configuración global del SIEM ────────────────────────────────────
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS config_global (
+                clave TEXT PRIMARY KEY,
+                valor TEXT NOT NULL
+            )
+        """)
+        # Valores por defecto — forzar_2fa existente + nuevas políticas de seguridad
+        defaults = [
+            ("forzar_2fa",                "0"),
+            # Sesión
+            ("session_timeout_minutos",   "30"),
+            # Política de contraseñas
+            ("password_min_length",       "8"),
+            ("password_require_upper",    "1"),
+            ("password_require_number",   "1"),
+            ("password_require_special",  "0"),
+            # Bloqueo por intentos fallidos
+            ("login_max_intentos",        "5"),
+            ("login_bloqueo_minutos",     "15"),
+            # Telegram
+            ("telegram_bot_token",        ""),
+            ("telegram_chat_id",          ""),
+            ("telegram_activo",           "0"),
+            # Retención de datos
+            ("alerta_retencion_dias",     "90"),
+        ]
+        for clave, valor in defaults:
+            c.execute("INSERT OR IGNORE INTO config_global (clave, valor) VALUES (?, ?)", (clave, valor))
+
+        # ── Migraciones: columnas nuevas en tablas existentes ────────────────
+        # Agregar ultimo_acceso a sesiones (sliding window para session timeout)
+        try:
+            c.execute("ALTER TABLE sesiones ADD COLUMN ultimo_acceso TEXT")
+        except Exception:
+            pass  # ya existe
+        # Inicializar ultimo_acceso en sesiones existentes
+        c.execute("""
+            UPDATE sesiones SET ultimo_acceso = created_at
+            WHERE ultimo_acceso IS NULL
+        """)
+
+        # Agregar campos de lockout a usuarios
+        try:
+            c.execute("ALTER TABLE usuarios ADD COLUMN intentos_fallidos INTEGER DEFAULT 0")
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE usuarios ADD COLUMN bloqueado_hasta TEXT DEFAULT NULL")
+        except Exception:
+            pass
+
+        # Agregar totp_secret y rol_id si no existen (migraciones previas)
+        try:
+            c.execute("ALTER TABLE usuarios ADD COLUMN totp_secret TEXT")
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE usuarios ADD COLUMN rol_id INTEGER REFERENCES roles(id)")
+        except Exception:
+            pass
+
+        # ── Log de auditoría ─────────────────────────────────────────────────
+        # Registra toda acción sensible: quién, cuándo, qué entidad, valor anterior y nuevo.
+        # entidad: 'alerta', 'usuario', 'agente', 'config', 'sesion'
+        # accion:  'crear', 'eliminar', 'modificar', 'login', 'logout', 'reset_password', etc.
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS auditoria (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts             TEXT DEFAULT (datetime('now', 'localtime')),
+                usuario        TEXT NOT NULL,
+                accion         TEXT NOT NULL,
+                entidad        TEXT,
+                id_entidad     TEXT,
+                valor_anterior TEXT,
+                valor_nuevo    TEXT
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_auditoria_ts      ON auditoria(ts DESC)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_auditoria_usuario  ON auditoria(usuario)")
+
         # ── Índices para las consultas más frecuentes del dashboard ──────────
         # Sin índices, cada filtro haría un full-scan de la tabla alertas.
         c.execute("CREATE INDEX IF NOT EXISTS idx_alertas_severity  ON alertas(severity)")
@@ -208,6 +383,11 @@ def init_db():
         conn.commit()
     finally:
         conn.close()
+
+    # Inicializar cifrado: crea la clave maestra si no existe todavía
+    encryption.init()
+    # Restringir permisos del archivo de DB (solo el usuario actual puede acceder)
+    encryption.restringir_db(DB_PATH)
 
 
 # ─── ALERTAS ─────────────────────────────────────────────────
@@ -489,12 +669,162 @@ def obtener_usuario(username: str) -> dict | None:
         conn.close()
 
 
+# Claves de config_global que contienen datos sensibles y deben cifrarse
+_CONFIG_CIFRADAS = {"telegram_bot_token"}
+
+def get_config_global(clave: str, default: str = "") -> str:
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT valor FROM config_global WHERE clave = ?", (clave,)).fetchone()
+        if not row:
+            return default
+        valor = row["valor"]
+        # Descifrar si es un campo sensible
+        if clave in _CONFIG_CIFRADAS:
+            valor = encryption.decrypt(valor)
+        return valor
+    finally:
+        conn.close()
+
+def set_config_global(clave: str, valor: str):
+    if clave in _CONFIG_CIFRADAS and valor:
+        valor = encryption.encrypt(valor)
+    conn = get_connection()
+    try:
+        conn.execute("INSERT OR REPLACE INTO config_global (clave, valor) VALUES (?, ?)", (clave, valor))
+        conn.commit()
+    finally:
+        conn.close()
+
+def get_all_config_global() -> dict:
+    """Retorna todas las configuraciones globales como dict (campos sensibles descifrados)."""
+    conn = get_connection()
+    try:
+        rows = conn.execute("SELECT clave, valor FROM config_global").fetchall()
+        result = {}
+        for r in rows:
+            val = r["valor"]
+            if r["clave"] in _CONFIG_CIFRADAS:
+                val = encryption.decrypt(val)
+            result[r["clave"]] = val
+        return result
+    finally:
+        conn.close()
+
+def set_many_config_global(items: dict):
+    """Guarda múltiples claves cifrando las sensibles."""
+    conn = get_connection()
+    try:
+        for clave, valor in items.items():
+            v = str(valor)
+            if clave in _CONFIG_CIFRADAS and v:
+                v = encryption.encrypt(v)
+            conn.execute(
+                "INSERT OR REPLACE INTO config_global (clave, valor) VALUES (?, ?)",
+                (clave, v)
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+# ─── LOCKOUT ──────────────────────────────────────────────────
+
+def registrar_intento_fallido(username: str) -> dict:
+    """
+    Incrementa el contador de intentos fallidos.
+    Si supera el máximo configurado, bloquea la cuenta por N minutos.
+    Retorna {"bloqueado": bool, "intentos": int, "bloqueado_hasta": str|None}
+    """
+    from datetime import datetime, timedelta
+    max_intentos    = int(get_config_global("login_max_intentos", "5"))
+    bloqueo_minutos = int(get_config_global("login_bloqueo_minutos", "15"))
+
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE usuarios SET intentos_fallidos = intentos_fallidos + 1 WHERE username = ?",
+            (username,)
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT intentos_fallidos, bloqueado_hasta FROM usuarios WHERE username = ?",
+            (username,)
+        ).fetchone()
+        if not row:
+            return {"bloqueado": False, "intentos": 0, "bloqueado_hasta": None}
+
+        intentos = row["intentos_fallidos"]
+        if intentos >= max_intentos:
+            hasta = (datetime.now() + timedelta(minutes=bloqueo_minutos)).strftime("%Y-%m-%d %H:%M:%S")
+            conn.execute(
+                "UPDATE usuarios SET bloqueado_hasta = ?, intentos_fallidos = 0 WHERE username = ?",
+                (hasta, username)
+            )
+            conn.commit()
+            return {"bloqueado": True, "intentos": intentos, "bloqueado_hasta": hasta}
+
+        return {"bloqueado": False, "intentos": intentos, "bloqueado_hasta": None}
+    finally:
+        conn.close()
+
+def resetear_intentos_fallidos(username: str):
+    """Resetea el contador de intentos fallidos tras un login exitoso."""
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE usuarios SET intentos_fallidos = 0, bloqueado_hasta = NULL WHERE username = ?",
+            (username,)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+def verificar_bloqueo(username: str) -> dict:
+    """
+    Verifica si una cuenta está bloqueada.
+    Si el bloqueo expiró, lo limpia automáticamente.
+    Retorna {"bloqueado": bool, "bloqueado_hasta": str|None, "segundos_restantes": int}
+    """
+    from datetime import datetime
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT bloqueado_hasta FROM usuarios WHERE username = ?",
+            (username,)
+        ).fetchone()
+        if not row or not row["bloqueado_hasta"]:
+            return {"bloqueado": False, "bloqueado_hasta": None, "segundos_restantes": 0}
+
+        hasta = datetime.strptime(row["bloqueado_hasta"], "%Y-%m-%d %H:%M:%S")
+        ahora = datetime.now()
+        if ahora >= hasta:
+            # Bloqueo expirado — limpiar
+            conn.execute(
+                "UPDATE usuarios SET bloqueado_hasta = NULL, intentos_fallidos = 0 WHERE username = ?",
+                (username,)
+            )
+            conn.commit()
+            return {"bloqueado": False, "bloqueado_hasta": None, "segundos_restantes": 0}
+
+        segundos = int((hasta - ahora).total_seconds())
+        return {"bloqueado": True, "bloqueado_hasta": row["bloqueado_hasta"], "segundos_restantes": segundos}
+    finally:
+        conn.close()
+
 def leer_usuarios() -> list:
-    """Retorna todos los usuarios sin el password_hash (para listar en el dashboard)."""
+    """Retorna todos los usuarios sin el password_hash.
+    Incluye rol_id, nombre del rol y si tiene 2FA activo."""
     conn = get_connection()
     try:
         c = conn.cursor()
-        c.execute("SELECT id, username, rol, activo, created_at FROM usuarios ORDER BY id ASC")
+        c.execute("""
+            SELECT u.id, u.username, u.rol, u.activo, u.created_at,
+                   u.rol_id, COALESCE(r.nombre, u.rol) AS rol_nombre,
+                   CASE WHEN u.totp_secret IS NOT NULL AND u.totp_secret != '' THEN 1 ELSE 0 END AS totp_activo
+            FROM usuarios u
+            LEFT JOIN roles r ON r.id = u.rol_id
+            ORDER BY u.id ASC
+        """)
         return [dict(row) for row in c.fetchall()]
     finally:
         conn.close()
@@ -571,22 +901,54 @@ def crear_sesion(usuario_id: int) -> str:
 
 def validar_sesion(token: str) -> dict | None:
     """
-    Valida que el token exista y no haya expirado.
-    Retorna {id, username, rol, debe_cambiar_password} del usuario, o None si inválido.
+    Valida el token con sliding-window inactivity timeout.
 
-    datetime('now', 'localtime') compara contra la hora local del sistema.
+    Flujo:
+      1. Busca la sesión activa (expires_at no expirado, usuario activo).
+      2. Verifica inactividad: si now - ultimo_acceso > session_timeout_minutos → elimina y retorna None.
+      3. Si válida → actualiza ultimo_acceso (sliding window).
     """
+    from datetime import datetime, timedelta
     conn = get_connection()
     try:
         row = conn.execute("""
-            SELECT u.id, u.username, u.rol, u.debe_cambiar_password
+            SELECT u.id, u.username, u.rol, u.rol_id, u.debe_cambiar_password,
+                   s.ultimo_acceso
             FROM sesiones s
             JOIN usuarios u ON u.id = s.usuario_id
             WHERE s.token = ?
               AND s.expires_at > datetime('now', 'localtime')
               AND u.activo = 1
         """, (token,)).fetchone()
-        return dict(row) if row else None
+
+        if not row:
+            return None
+
+        # Verificar inactividad (sliding window)
+        timeout_min = int(get_config_global("session_timeout_minutos", "30"))
+        ultimo = row["ultimo_acceso"]
+        if ultimo:
+            try:
+                ultima_vez = datetime.strptime(ultimo, "%Y-%m-%d %H:%M:%S")
+                if datetime.now() - ultima_vez > timedelta(minutes=timeout_min):
+                    conn.execute("DELETE FROM sesiones WHERE token = ?", (token,))
+                    conn.commit()
+                    return None
+            except Exception:
+                pass
+
+        # Actualizar ultimo_acceso (sliding window)
+        ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute("UPDATE sesiones SET ultimo_acceso = ? WHERE token = ?", (ahora, token))
+        conn.commit()
+
+        return {
+            "id":                    row["id"],
+            "username":              row["username"],
+            "rol":                   row["rol"],
+            "rol_id":                row["rol_id"],
+            "debe_cambiar_password": row["debe_cambiar_password"],
+        }
     finally:
         conn.close()
 
@@ -614,6 +976,29 @@ def limpiar_sesiones_expiradas():
         conn.close()
 
 
+def limpiar_alertas_antiguas() -> int:
+    """
+    Elimina alertas (y sus eventos/tickets asociados) más antiguas que
+    alerta_retencion_dias. Retorna la cantidad de alertas eliminadas.
+    Se llama periódicamente desde siem_servidor.py.
+    """
+    dias = int(get_config_global("alerta_retencion_dias", "90"))
+    if dias <= 0:
+        return 0  # 0 = retención indefinida
+    conn = get_connection()
+    try:
+        c = conn.cursor()
+        c.execute("""
+            DELETE FROM alertas
+            WHERE created_at <= datetime('now', 'localtime', ?)
+        """, (f"-{dias} days",))
+        eliminadas = c.rowcount
+        conn.commit()
+        return eliminadas
+    finally:
+        conn.close()
+
+
 # ─── CONFIG AGENTES ───────────────────────────────────────────
 
 def leer_config_agentes() -> list:
@@ -636,18 +1021,18 @@ def leer_config_agentes() -> list:
 def crear_agente(nombre: str, ip: str, descripcion: str = "", tipo: str = "windows") -> dict:
     """
     Registra un nuevo agente en la whitelist con estado 'activo'.
-    Genera automáticamente un api_key único para ese agente.
-    Retorna el dict del agente creado (incluyendo el api_key para mostrarlo al admin).
+    Genera automáticamente un api_key único y lo almacena cifrado.
+    Retorna el dict del agente con el api_key en texto plano (solo se muestra una vez).
     """
-    # secrets.token_urlsafe(32) genera un token de 43 caracteres URL-safe
-    api_key = secrets.token_urlsafe(32)
+    api_key     = secrets.token_urlsafe(32)
+    api_key_enc = encryption.encrypt(api_key)
     conn = get_connection()
     try:
         c = conn.cursor()
         c.execute("""
             INSERT INTO config_agentes (nombre, ip, descripcion, api_key, estado, tipo)
             VALUES (?, ?, ?, ?, 'activo', ?)
-        """, (nombre, ip, descripcion, api_key, tipo))
+        """, (nombre, ip, descripcion, api_key_enc, tipo))
         conn.commit()
         return {"nombre": nombre, "ip": ip, "descripcion": descripcion,
                 "api_key": api_key, "estado": "activo", "tipo": tipo}
@@ -693,12 +1078,13 @@ def eliminar_agente_config(nombre: str):
 
 
 def regenerar_api_key(nombre: str) -> str:
-    """Genera un nuevo api_key para un agente (útil si el anterior fue comprometido)."""
-    nuevo_key = secrets.token_urlsafe(32)
+    """Genera un nuevo api_key cifrado. Retorna el valor en plano para mostrarlo al admin."""
+    nuevo_key     = secrets.token_urlsafe(32)
+    nuevo_key_enc = encryption.encrypt(nuevo_key)
     conn = get_connection()
     try:
         conn.execute(
-            "UPDATE config_agentes SET api_key = ? WHERE nombre = ?", (nuevo_key, nombre)
+            "UPDATE config_agentes SET api_key = ? WHERE nombre = ?", (nuevo_key_enc, nombre)
         )
         conn.commit()
         return nuevo_key
@@ -730,7 +1116,7 @@ def validar_agente_acceso(nombre: str, ip: str, api_key: str = None) -> tuple:
         if not row:
             # Auto-registrar como pendiente para que el admin lo vea en el dashboard
             tipo = "linux" if ("ubuntu" in nombre.lower() or "linux" in nombre.lower()) else "windows"
-            nuevo_key = secrets.token_urlsafe(32)
+            nuevo_key = encryption.encrypt(secrets.token_urlsafe(32))
             conn.execute("""
                 INSERT OR IGNORE INTO config_agentes (nombre, ip, api_key, estado, tipo)
                 VALUES (?, ?, ?, 'pendiente', ?)
@@ -748,8 +1134,10 @@ def validar_agente_acceso(nombre: str, ip: str, api_key: str = None) -> tuple:
 
         # estado == 'activo' — validar api_key si ambos lados la tienen configurada
         if agente.get("api_key") and api_key:
+            # Descifrar la key almacenada antes de comparar
+            stored_key = encryption.decrypt(agente["api_key"])
             # secrets.compare_digest evita timing attacks (comparación de longitud constante)
-            if not secrets.compare_digest(str(agente["api_key"]), str(api_key)):
+            if not secrets.compare_digest(str(stored_key), str(api_key)):
                 return (False, "API key inválida.")
 
         # Actualizar IP si cambió (agentes con IP dinámica)
@@ -831,5 +1219,357 @@ def migrar_datos_legacy(alertas_jsonl: str, tickets_json: str) -> int:
 
         conn.commit()
         return migrados
+    finally:
+        conn.close()
+
+
+# ─── RBAC ────────────────────────────────────────────────────
+#
+# Jerarquía de permisos:
+#   usuario.rol_id ──► roles ──► rol_permisos ──► permisos.codigo
+#
+# El backend siempre valida por 'codigo' (string) para no acoplar
+# lógica de negocio a IDs numéricos.  Si rol_id es NULL (usuario
+# legacy pre-RBAC), se aplica fallback por el campo 'rol' TEXT.
+
+def obtener_permisos_usuario(usuario_id: int) -> set:
+    """
+    Retorna el set de códigos de permiso del usuario según su rol_id.
+    Fallback: si no tiene rol_id, usa el campo 'rol' TEXT para inferir permisos.
+    """
+    conn = get_connection()
+    try:
+        rows = conn.execute("""
+            SELECT p.codigo FROM permisos p
+            JOIN rol_permisos rp ON rp.permiso_id = p.id
+            JOIN usuarios u      ON u.rol_id       = rp.rol_id
+            WHERE u.id = ?
+        """, (usuario_id,)).fetchall()
+
+        if rows:
+            return {r[0] for r in rows}
+
+        # Fallback legacy: usuario sin rol_id asignado
+        u = conn.execute("SELECT rol FROM usuarios WHERE id = ?", (usuario_id,)).fetchone()
+        if u and u[0] == "admin":
+            return {r[0] for r in conn.execute("SELECT codigo FROM permisos").fetchall()}
+        # Permiso mínimo estilo 'analista'
+        return {"ver_alertas", "gestionar_alertas", "ver_agentes",
+                "ver_reportes", "exportar_reportes"}
+    finally:
+        conn.close()
+
+
+def leer_roles() -> list:
+    """Retorna todos los roles con la lista de permisos asignados a cada uno."""
+    conn = get_connection()
+    try:
+        c = conn.cursor()
+        c.execute("""
+            SELECT id, nombre, descripcion, es_builtin, created_at
+            FROM roles ORDER BY id ASC
+        """)
+        roles = []
+        for row in c.fetchall():
+            rol = dict(row)
+            c.execute("""
+                SELECT p.id, p.codigo, p.descripcion, p.categoria
+                FROM permisos p
+                JOIN rol_permisos rp ON rp.permiso_id = p.id
+                WHERE rp.rol_id = ?
+                ORDER BY p.categoria, p.codigo
+            """, (rol["id"],))
+            rol["permisos"] = [dict(p) for p in c.fetchall()]
+            roles.append(rol)
+        return roles
+    finally:
+        conn.close()
+
+
+def leer_permisos() -> list:
+    """Retorna todos los permisos disponibles ordenados por categoría."""
+    conn = get_connection()
+    try:
+        c = conn.cursor()
+        c.execute("""
+            SELECT id, codigo, descripcion, categoria
+            FROM permisos ORDER BY categoria, codigo
+        """)
+        return [dict(row) for row in c.fetchall()]
+    finally:
+        conn.close()
+
+
+def crear_rol(nombre: str, descripcion: str) -> int:
+    """Crea un rol custom. Lanza IntegrityError si el nombre ya existe."""
+    conn = get_connection()
+    try:
+        c = conn.cursor()
+        c.execute(
+            "INSERT INTO roles (nombre, descripcion, es_builtin) VALUES (?, ?, 0)",
+            (nombre, descripcion)
+        )
+        conn.commit()
+        return c.lastrowid
+    finally:
+        conn.close()
+
+
+def eliminar_rol(rol_id: int) -> bool:
+    """
+    Elimina un rol.  Retorna False SOLO si es el rol 'admin' (id=1),
+    que es el único intocable del sistema.
+    El rol 'analista' y cualquier rol custom pueden eliminarse siendo admin.
+    Los usuarios con ese rol quedan con rol_id=NULL → fallback analista.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT id, nombre FROM roles WHERE id = ?", (rol_id,)
+        ).fetchone()
+        if not row:
+            return False
+        # Solo el rol 'admin' (id=1) es intocable
+        if row["nombre"] == "admin":
+            return False
+        conn.execute("UPDATE usuarios SET rol_id = NULL WHERE rol_id = ?", (rol_id,))
+        conn.execute("DELETE FROM roles WHERE id = ?", (rol_id,))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def set_rol_permisos(rol_id: int, permiso_ids: list):
+    """Reemplaza completamente los permisos de un rol (DELETE + INSERT)."""
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM rol_permisos WHERE rol_id = ?", (rol_id,))
+        for pid in permiso_ids:
+            conn.execute(
+                "INSERT OR IGNORE INTO rol_permisos (rol_id, permiso_id) VALUES (?, ?)",
+                (rol_id, int(pid))
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def asignar_rol_usuario(usuario_id: int, rol_id: int):
+    """Cambia el rol de un usuario. Mantiene en sync el campo 'rol' TEXT (compat.)."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT nombre FROM roles WHERE id = ?", (rol_id,)
+        ).fetchone()
+        rol_nombre = row[0] if row else "analista"
+        conn.execute(
+            "UPDATE usuarios SET rol_id = ?, rol = ? WHERE id = ?",
+            (rol_id, rol_nombre, usuario_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ─── TOTP ─────────────────────────────────────────────────────
+
+def set_totp_secret(usuario_id: int, secret: str | None):
+    """Guarda (cifrado) o elimina el secret TOTP de un usuario (None = desactivar)."""
+    valor = encryption.encrypt(secret) if secret else None
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE usuarios SET totp_secret = ? WHERE id = ?",
+            (valor, usuario_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_totp_secret(username: str) -> str | None:
+    """Retorna el secret TOTP del usuario descifrado, o None si no tiene configurado."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT totp_secret FROM usuarios WHERE username = ?", (username,)
+        ).fetchone()
+        raw = row[0] if row and row[0] else None
+        return encryption.decrypt(raw) if raw else None
+    finally:
+        conn.close()
+
+
+# ─── REPORTERÍA FILTRADA ──────────────────────────────────────
+
+def leer_alertas_filtradas(
+    fecha_desde: str = None,
+    fecha_hasta: str = None,
+    severidades: list = None,
+    fuentes:     list = None,
+    estados:     list = None,
+    limite:      int  = 1000
+) -> list:
+    """
+    Consulta SQL dinámica para el módulo de reportería.
+    Todos los filtros son opcionales; sin filtros equivale a leer_alertas().
+
+    Parámetros:
+      fecha_desde/hasta : 'YYYY-MM-DD' — rango sobre alertas.timestamp
+      severidades       : ['critical', 'high', ...] — filtro OR
+      fuentes           : ['windows-agente', ...] — filtro OR por LIKE
+      estados           : ['nueva', 'resuelta', ...] — sobre tickets.estado
+      limite            : máximo de filas retornadas (default 1000)
+    """
+    conn = get_connection()
+    try:
+        c = conn.cursor()
+        conditions, params = [], []
+
+        if fecha_desde:
+            conditions.append("a.timestamp >= ?")
+            params.append(fecha_desde + " 00:00:00")
+        if fecha_hasta:
+            conditions.append("a.timestamp <= ?")
+            params.append(fecha_hasta + " 23:59:59")
+        if severidades:
+            ph = ",".join("?" * len(severidades))
+            conditions.append(f"a.severity IN ({ph})")
+            params.extend(severidades)
+        if estados:
+            ph = ",".join("?" * len(estados))
+            conditions.append(f"COALESCE(t.estado, 'nueva') IN ({ph})")
+            params.extend(estados)
+        if fuentes:
+            sub = " OR ".join(["a.fuente LIKE ?" for _ in fuentes])
+            conditions.append(f"({sub})")
+            params.extend([f"%{f}%" for f in fuentes])
+
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        c.execute(f"""
+            SELECT
+                a.id, a.timestamp, a.severity, a.fuente, a.ip,
+                a.summary, a.accion_recomendada,
+                COALESCE(a.ocurrencias, 1)          AS ocurrencias,
+                COALESCE(a.ultima_vez, a.timestamp) AS ultima_vez,
+                COALESCE(t.estado, 'nueva')         AS estado
+            FROM alertas a
+            LEFT JOIN tickets t ON t.alerta_id = a.id
+            {where}
+            ORDER BY a.id DESC
+            LIMIT ?
+        """, params + [limite])
+
+        alertas = []
+        for fila in c.fetchall():
+            alerta = dict(fila)
+            alerta["_id"] = alerta["id"]
+            c.execute("""
+                SELECT event_id AS id, descripcion, riesgo
+                FROM eventos_alerta WHERE alerta_id = ?
+            """, (alerta["id"],))
+            alerta["events"] = [dict(ev) for ev in c.fetchall()]
+            c.execute("""
+                SELECT texto, ts FROM comentarios
+                WHERE alerta_id = ? ORDER BY id ASC
+            """, (alerta["id"],))
+            alerta["comentarios"] = [dict(cm) for cm in c.fetchall()]
+            alertas.append(alerta)
+
+        return alertas
+    finally:
+        conn.close()
+
+
+# ─── AUDITORÍA ───────────────────────────────────────────────
+
+def registrar_auditoria(usuario: str, accion: str, entidad: str = None,
+                        id_entidad: str = None, valor_anterior: str = None,
+                        valor_nuevo: str = None):
+    """Registra una acción en el log de auditoría."""
+    conn = get_connection()
+    try:
+        conn.execute("""
+            INSERT INTO auditoria (usuario, accion, entidad, id_entidad, valor_anterior, valor_nuevo)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (usuario, accion, entidad, id_entidad, valor_anterior, valor_nuevo))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def leer_auditoria(limite: int = 200) -> list:
+    """Retorna los últimos N registros de auditoría (sin filtros)."""
+    conn = get_connection()
+    try:
+        c = conn.cursor()
+        c.execute("""
+            SELECT id, ts, usuario, accion, entidad, id_entidad, valor_anterior, valor_nuevo
+            FROM auditoria ORDER BY id DESC LIMIT ?
+        """, (limite,))
+        return [dict(row) for row in c.fetchall()]
+    finally:
+        conn.close()
+
+
+def leer_auditoria_filtrada(
+    fecha_desde: str = None,
+    fecha_hasta: str = None,
+    usuario:     str = None,
+    accion:      str = None,
+    limite:      int = 500
+) -> list:
+    """
+    Consulta filtrada del log de auditoría para reportería y exportación.
+
+    Parámetros:
+      fecha_desde/hasta : 'YYYY-MM-DD' — rango sobre auditoria.ts
+      usuario           : búsqueda parcial por nombre de usuario (LIKE)
+      accion            : código exacto de acción (ej: 'modificar_permisos_rol')
+      limite            : máximo de filas (default 500)
+    """
+    conn = get_connection()
+    try:
+        conditions, params = [], []
+
+        if fecha_desde:
+            conditions.append("ts >= ?")
+            params.append(fecha_desde + " 00:00:00")
+        if fecha_hasta:
+            conditions.append("ts <= ?")
+            params.append(fecha_hasta + " 23:59:59")
+        if usuario:
+            conditions.append("usuario LIKE ?")
+            params.append(f"%{usuario}%")
+        if accion:
+            conditions.append("accion = ?")
+            params.append(accion)
+
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute(f"""
+            SELECT id, ts, usuario, accion, entidad, id_entidad, valor_anterior, valor_nuevo
+            FROM auditoria
+            {where}
+            ORDER BY id DESC
+            LIMIT ?
+        """, params + [limite])
+        return [dict(row) for row in c.fetchall()]
+    finally:
+        conn.close()
+
+
+def leer_acciones_distintas() -> list:
+    """Retorna la lista de acciones únicas registradas (para el filtro dropdown)."""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT DISTINCT accion FROM auditoria ORDER BY accion ASC"
+        ).fetchall()
+        return [r[0] for r in rows]
     finally:
         conn.close()

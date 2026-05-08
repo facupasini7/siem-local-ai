@@ -13,6 +13,7 @@ lo que hace que los ataques de fuerza bruta sean computacionalmente costosos.
 """
 
 import bcrypt
+import re
 import database
 
 # ─── PASSWORDS ───────────────────────────────────────────────
@@ -81,41 +82,98 @@ def init_admin_if_needed():
 
 # ─── LOGIN Y SESIONES ─────────────────────────────────────────
 
+def validar_password_policy(password: str) -> list[str]:
+    """
+    Valida la contraseña contra las políticas configuradas en config_global.
+    Retorna lista de errores (vacía = contraseña válida).
+    """
+    errores = []
+    min_len  = int(database.get_config_global("password_min_length",      "8"))
+    req_up   = database.get_config_global("password_require_upper",   "1") == "1"
+    req_num  = database.get_config_global("password_require_number",  "1") == "1"
+    req_spec = database.get_config_global("password_require_special", "0") == "1"
+
+    if len(password) < min_len:
+        errores.append(f"Mínimo {min_len} caracteres.")
+    if req_up and not re.search(r"[A-Z]", password):
+        errores.append("Debe contener al menos una mayúscula.")
+    if req_num and not re.search(r"\d", password):
+        errores.append("Debe contener al menos un número.")
+    if req_spec and not re.search(r"[!@#$%^&*()\-_=+\[\]{};:',.<>?/\\|`~]", password):
+        errores.append("Debe contener al menos un carácter especial (!@#$%...).")
+    return errores
+
+
+def verificar_credenciales(username: str, password: str) -> dict | None:
+    """
+    Valida usuario y contraseña SIN crear sesión.
+
+    Usado por el flujo de login en dos pasos (cuando hay TOTP activo):
+      Paso 1: verificar_credenciales() → ok → preguntar código TOTP
+      Paso 2: código correcto → crear_sesion() → emitir token
+
+    Retorna:
+      dict del usuario  si las credenciales son válidas.
+      {"error": str}    si la cuenta está bloqueada.
+      None              si las credenciales son incorrectas.
+    """
+    usuario = database.obtener_usuario(username)
+    if not usuario or not usuario.get("activo"):
+        return None
+
+    bloqueo = database.verificar_bloqueo(username)
+    if bloqueo["bloqueado"]:
+        mins = bloqueo["segundos_restantes"] // 60 + 1
+        return {"error": f"Cuenta bloqueada. Intentá en {mins} minuto(s)."}
+
+    if not verify_password(password, usuario["password_hash"]):
+        resultado = database.registrar_intento_fallido(username)
+        if resultado["bloqueado"]:
+            mins = int(database.get_config_global("login_bloqueo_minutos", "15"))
+            return {"error": f"Demasiados intentos fallidos. Cuenta bloqueada por {mins} minuto(s)."}
+        return None
+
+    database.resetear_intentos_fallidos(username)
+    return usuario
+
+
 def login(username: str, password: str) -> dict | None:
     """
     Autentica un usuario y emite un token de sesión si las credenciales son válidas.
 
-    Flujo:
-      1. Busca el usuario en la DB por nombre de usuario.
-      2. Verifica que la cuenta esté activa (activo=1).
-      3. Compara la contraseña con el hash almacenado usando bcrypt.
-      4. Si todo es correcto, crea una sesión en la DB y retorna el token.
+    Flujo de dos pasos cuando el usuario tiene TOTP configurado:
+      - Si tiene TOTP: retorna {"requiere_totp": True, "username": str} (sin sesión)
+      - El dashboard almacena un token temporal y espera el código TOTP
+      - Si no tiene TOTP: crea la sesión directamente y retorna el token
 
     Retorna:
-      {"token": str, "rol": str, "username": str}  si las credenciales son válidas.
-      None  si el usuario no existe, la cuenta está deshabilitada, o la contraseña es incorrecta.
-
-    Nota de seguridad: el mensaje de error no distingue entre "usuario no existe"
-    y "contraseña incorrecta" para no dar información al atacante.
+      {"token": str, "rol": str, "username": str}    → login completo (sin TOTP)
+      {"requiere_totp": True, "username": str}        → necesita verificar TOTP
+      {"error": str}                                  → cuenta bloqueada
+      None                                            → credenciales incorrectas
     """
-    usuario = database.obtener_usuario(username)
+    usuario = verificar_credenciales(username, password)
 
-    if not usuario:
+    if usuario is None:
         return None
+    if "error" in usuario:
+        return usuario  # cuenta bloqueada
 
-    if not usuario.get("activo"):
-        return None
+    # Verificar si el usuario tiene TOTP activo
+    totp_secret = database.get_totp_secret(username)
+    if totp_secret:
+        # No crear sesión todavía — el frontend debe pedir el código TOTP
+        return {
+            "requiere_totp": True,
+            "username":      usuario["username"],
+        }
 
-    if not verify_password(password, usuario["password_hash"]):
-        return None
-
-    # Credenciales válidas → crear sesión en la DB y retornar el token
+    # Sin TOTP → crear sesión directamente
     token = database.crear_sesion(usuario["id"])
-
     return {
-        "token":                token,
-        "rol":                  usuario["rol"],
-        "username":             usuario["username"],
+        "token":                 token,
+        "rol":                   usuario["rol"],
+        "username":              usuario["username"],
         "debe_cambiar_password": bool(usuario.get("debe_cambiar_password", 0))
     }
 

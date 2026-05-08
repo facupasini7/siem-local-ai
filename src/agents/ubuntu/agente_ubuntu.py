@@ -6,12 +6,14 @@ import socket
 from datetime import datetime, timedelta
 
 # ─── CONFIGURACION ───────────────────────────────────────────
-SIEM_URL        = "http://192.168.1.48:8080/api/eventos-externos"
 AGENTE_NOMBRE   = "ubuntu-agente"
 VENTANA_MINUTOS = 5
-IP_LOCAL        = "192.168.1.7"
-LOG_FILE        = "/home/facu/siem-agente/agente.log"
-CONFIG_FILE     = "/home/facu/siem-agente/config.json"
+LOG_FILE        = "/siem-agente/agente.log"
+CONFIG_FILE     = "/siem-agente/config.json"
+
+# Valores por defecto — se sobreescriben con config.json en cada ciclo
+_SIEM_URL_DEFAULT = "http://192.168.1.48:8080/api/eventos-externos"
+_IP_LOCAL_DEFAULT = "192.168.1.7"
 # ─────────────────────────────────────────────────────────────
 
 def leer_config() -> dict:
@@ -19,7 +21,7 @@ def leer_config() -> dict:
         with open(CONFIG_FILE, "r") as f:
             return json.load(f)
     except:
-        return {"api_key": ""}
+        return {"api_key": "", "siem_url": "", "ip_local": ""}
 
 def log(msg: str):
     ts  = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -80,19 +82,22 @@ def get_journald_logs(since: datetime) -> str:
 
 def enviar_al_siem(logs: str) -> bool:
     """Manda los logs al SIEM central."""
+    cfg      = leer_config()
+    siem_url = cfg.get("siem_url", "").strip() or _SIEM_URL_DEFAULT
+    ip_local = cfg.get("ip_local", "").strip() or _IP_LOCAL_DEFAULT
     body = {
         "agente": AGENTE_NOMBRE,
-        "ip":     IP_LOCAL,
+        "ip":     ip_local,
         "logs":   logs
     }
-    api_key = leer_config().get("api_key", "")
+    api_key = cfg.get("api_key", "")
     if api_key:
         body["api_key"] = api_key
     payload = json.dumps(body).encode("utf-8")
 
     try:
         req = urllib.request.Request(
-            SIEM_URL,
+            siem_url,
             data=payload,
             headers={"Content-Type": "application/json"}
         )
@@ -104,8 +109,10 @@ def enviar_al_siem(logs: str) -> bool:
         return False
 
 def ciclo_monitoreo():
+    cfg      = leer_config()
+    siem_url = cfg.get("siem_url", "").strip() or _SIEM_URL_DEFAULT
     log("Agente Ubuntu iniciado")
-    log(f"SIEM central: {SIEM_URL}")
+    log(f"SIEM central: {siem_url}")
     log(f"Ventana de analisis: {VENTANA_MINUTOS} minutos")
     log("-" * 50)
 

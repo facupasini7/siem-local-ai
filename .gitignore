@@ -33,3 +33,15 @@ desktop.ini
 config.json
 *.key
 *.pem
+
+# Datos en tiempo real (IPs, rutas, eventos reales)
+*.jsonl
+*.log
+tickets.json
+
+# Scripts de prueba locales
+enviar_prueba.py
+aprobar_agente.py
+
+# Sesiones de Claude (conversaciones privadas)
+.claude/
