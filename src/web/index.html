@@ -247,6 +247,23 @@ nav { flex:1; padding:10px 0; overflow-y:auto; }
 .chart-wrap { position:relative; height:200px; }
 .chart-wrap canvas { max-height:200px; }
 
+/* ── AbuseIPDB — Reputación IP ───────────────────────────── */
+.ip-rep {
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:11px; font-weight:600; padding:2px 8px;
+  border-radius:20px; border:1px solid; white-space:nowrap;
+  cursor:default; font-family:monospace;
+}
+.ip-rep.safe     { color:#3fb950; border-color:#3fb95044; background:#3fb95014; }
+.ip-rep.low      { color:#e3b341; border-color:#e3b34144; background:#e3b34114; }
+.ip-rep.medium   { color:#f0883e; border-color:#f0883e44; background:#f0883e14; }
+.ip-rep.high     { color:#f85149; border-color:#f8514944; background:#f8514914; }
+.abuse-table { width:100%; border-collapse:collapse; font-size:12px; }
+.abuse-table th { text-align:left; color:var(--text-2); font-weight:600;
+                  padding:6px 10px; border-bottom:1px solid var(--border); font-size:11px; }
+.abuse-table td { padding:6px 10px; border-bottom:1px solid var(--border-sub); }
+.abuse-score-bar { display:inline-block; height:6px; border-radius:3px; vertical-align:middle; margin-right:6px; }
+
 /* ── MITRE ATT&CK ────────────────────────────────────────── */
 .attack-strip { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 10px; }
 .badge-attack {
@@ -852,6 +869,12 @@ body:not(.is-admin) .admin-only { display:none; }
         <div style="font-size:13px;color:var(--text-2)">Cargando…</div>
       </div>
 
+      <!-- AbuseIPDB — IPs sospechosas -->
+      <div class="section-title" id="abuse-ips-title" style="display:none">
+        🌐 Threat Intelligence — IPs sospechosas detectadas
+      </div>
+      <div class="mitre-widget" id="abuse-ips-widget" style="display:none"></div>
+
       <div class="section-title">Agentes conectados</div>
       <div class="agentes-strip" id="ov-agentes"></div>
       <div class="section-title">Últimas alertas</div>
@@ -1150,6 +1173,30 @@ body:not(.is-admin) .admin-only { display:none; }
             <button class="btn-secondary" style="font-size:12px;padding:6px 14px"
                     onclick="testTelegram()">📨 Enviar prueba</button>
           </div>
+        </div>
+
+        <!-- AbuseIPDB -->
+        <div class="seg-card" style="grid-column:1/-1">
+          <div class="seg-card-title">🌐 Threat Intelligence — AbuseIPDB</div>
+          <div style="font-size:12px;color:var(--text-2);margin-bottom:14px">
+            Enriquecé automáticamente cada alerta con la reputación de la IP de origen.
+            Las IPs con score ≥ 90 escalan la severidad a <strong>HIGH</strong>.
+            <a href="https://www.abuseipdb.com/account/api" target="_blank" style="color:var(--blue)">Obtené tu API key gratuita aquí →</a>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end;max-width:560px">
+            <div class="form-field" style="margin-bottom:0">
+              <label>API Key</label>
+              <input type="password" id="sec-abuse-key" placeholder="Tu API key de abuseipdb.com"/>
+              <div class="form-hint">Plan gratuito: 1000 consultas/día. Las IPs privadas se omiten automáticamente.</div>
+            </div>
+            <div style="display:flex;gap:8px;padding-bottom:24px">
+              <button class="btn-secondary" style="font-size:12px;padding:6px 14px"
+                      onclick="testAbuseIPDB()">🔍 Probar</button>
+              <button class="btn-primary" style="font-size:12px;padding:6px 14px"
+                      onclick="guardarAbuseIPDB()">💾 Guardar</button>
+            </div>
+          </div>
+          <div id="abuse-status" style="font-size:12px;margin-top:8px"></div>
         </div>
 
       </div><!-- .seg-grid -->
@@ -1840,6 +1887,9 @@ async function renderOverview() {
   // Widget MITRE ATT&CK
   await renderMitreWidget();
 
+  // Widget AbuseIPDB — IPs sospechosas
+  await renderAbuseIpsWidget();
+
   // Agentes (últimos contactos)
   await renderAgentesStrip();
 
@@ -1864,6 +1914,48 @@ function statCard(icon, label, value, cls) {
       <div class="value">${value}</div>
     </div>
   </div>`;
+}
+
+async function renderAbuseIpsWidget() {
+  const res = await api("GET", "/api/abuseipdb/ips-sospechosas");
+  if (!res || !res.ok) return;
+  const ips = await res.json();
+  if (!ips || ips.length === 0) return;
+
+  const titleEl  = document.getElementById("abuse-ips-title");
+  const widgetEl = document.getElementById("abuse-ips-widget");
+  titleEl.style.display  = "";
+  widgetEl.style.display = "";
+
+  const rows = ips.map(ip => {
+    const score = ip.score || 0;
+    const cls   = score >= 90 ? "high" : score >= 60 ? "medium" : score >= 25 ? "low" : "safe";
+    const emoji = ip.pais_emoji || "";
+    const cats  = (ip.categorias || []).slice(0, 2).join(", ") || "—";
+    return `<tr>
+      <td><code style="font-size:12px">${ip.ip}</code></td>
+      <td><span class="ip-rep ${cls}" style="font-size:11px">${score}/100</span></td>
+      <td style="color:var(--text-2);font-size:12px">${emoji} ${ip.pais || "—"}</td>
+      <td style="color:var(--text-2);font-size:12px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ip.isp || "—"}</td>
+      <td style="color:var(--text-2);font-size:12px">${ip.total_reports?.toLocaleString() || 0}</td>
+      <td style="color:var(--text-2);font-size:12px">${cats}</td>
+    </tr>`;
+  }).join("");
+
+  widgetEl.innerHTML = `
+    <table class="abuse-table" style="width:100%;border-collapse:collapse">
+      <thead>
+        <tr style="font-size:11px;color:var(--text-2);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)">
+          <th style="padding:6px 8px;text-align:left;font-weight:600">IP</th>
+          <th style="padding:6px 8px;text-align:left;font-weight:600">Score</th>
+          <th style="padding:6px 8px;text-align:left;font-weight:600">País</th>
+          <th style="padding:6px 8px;text-align:left;font-weight:600">ISP</th>
+          <th style="padding:6px 8px;text-align:left;font-weight:600">Reportes</th>
+          <th style="padding:6px 8px;text-align:left;font-weight:600">Categorías</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
 }
 
 async function renderAgentesStrip() {
@@ -2023,6 +2115,21 @@ function buildCard(a) {
             title="${escHtml(t.nombre)} — ${escHtml(t.tactica)}">${escHtml(t.id)}</span>`
   ).join("");
 
+  // Badge de reputación IP (AbuseIPDB)
+  let ipRepBadge = "";
+  if (a.ip_score !== null && a.ip_score !== undefined) {
+    const score = a.ip_score;
+    const cls   = score >= 90 ? "high" : score >= 60 ? "medium" : score >= 25 ? "low" : "safe";
+    const emoji = a.ip_pais && a.ip_pais.length === 2
+      ? String.fromCodePoint(...a.ip_pais.toUpperCase().split('').map(c => c.charCodeAt(0) + 127397))
+      : "";
+    const reports = a.ip_reports ? ` · ${a.ip_reports} rep.` : "";
+    ipRepBadge = `<span class="ip-rep ${cls}"
+      title="AbuseIPDB Score: ${score}/100 — ${a.ip_reports || 0} reportes">
+      ${emoji} ${score}/100${reports}
+    </span>`;
+  }
+
   return `
     <div class="alerta-card ${a.severity} ${a.estado}">
       <div class="card-header">
@@ -2031,6 +2138,7 @@ function buildCard(a) {
         ${(a.ocurrencias || 1) > 1 ? `<span class="badge-ocurrencias" title="Se repitió ${a.ocurrencias} veces">×${a.ocurrencias}</span>` : ""}
         <span class="card-summary">${summary}</span>
         <div class="card-meta">
+          ${ipRepBadge}
           <span class="card-agent ${fuenteCls}">${fuente}</span>
           <span class="card-ts" title="Primera vez: ${escHtml(a.timestamp)}${(a.ocurrencias||1)>1?' · Última vez: '+escHtml(a.ultima_vez):''}">
             ${relTime(a.timestamp)}${(a.ocurrencias||1) > 1 ? ` · última: ${relTime(a.ultima_vez)}` : ""}
@@ -3002,6 +3110,19 @@ async function loadSeguridad() {
       statusEl.style.color = "var(--yellow)";
     }
   }
+  // Cargar estado AbuseIPDB
+  const resA = await api("GET", "/api/config/abuseipdb");
+  if (resA && resA.ok) {
+    const ab = await resA.json();
+    const statusEl = document.getElementById("abuse-status");
+    if (ab.configurado) {
+      statusEl.innerHTML = `✅ API key configurada — <code>${ab.key_masked}</code>`;
+      statusEl.style.color = "var(--green)";
+    } else {
+      statusEl.textContent = "⚠️ No configurada. Registrá tu key gratuita en abuseipdb.com";
+      statusEl.style.color = "var(--yellow)";
+    }
+  }
 }
 
 async function guardarSeguridad() {
@@ -3067,6 +3188,54 @@ async function testTelegram() {
   const d = await res.json();
   if (res.ok) toast("✅ Mensaje de prueba enviado a Telegram.", "success");
   else toast(d.error || "Error al enviar.", "error");
+}
+
+async function guardarAbuseIPDB() {
+  const key = document.getElementById("sec-abuse-key").value.trim();
+  if (!key) { toast("Ingresá tu API key de AbuseIPDB.", "warning"); return; }
+  const statusEl = document.getElementById("abuse-status");
+  statusEl.textContent = "⏳ Guardando...";
+  statusEl.style.color = "var(--text-2)";
+  const res = await api("POST", "/api/config/abuseipdb", { api_key: key });
+  if (!res) { statusEl.textContent = "❌ Error de conexión."; statusEl.style.color = "var(--red)"; return; }
+  const d = await res.json();
+  if (res.ok) {
+    statusEl.textContent = "✅ API key guardada correctamente.";
+    statusEl.style.color = "var(--green)";
+    document.getElementById("sec-abuse-key").value = "";
+    toast("API key de AbuseIPDB guardada.", "success");
+  } else {
+    statusEl.textContent = `❌ ${d.error || "Error al guardar."}`;
+    statusEl.style.color = "var(--red)";
+    toast(d.error || "Error al guardar.", "error");
+  }
+}
+
+async function testAbuseIPDB() {
+  const btn = event.target;
+  const statusEl = document.getElementById("abuse-status");
+  btn.disabled = true; btn.textContent = "⏳ Probando...";
+  statusEl.textContent = "⏳ Consultando IP de prueba (8.8.8.8)...";
+  statusEl.style.color = "var(--text-2)";
+  const res = await api("POST", "/api/config/abuseipdb/test", {});
+  btn.disabled = false; btn.textContent = "🔍 Probar";
+  if (!res) {
+    statusEl.textContent = "❌ Error de conexión.";
+    statusEl.style.color = "var(--red)";
+    return;
+  }
+  const d = await res.json();
+  if (res.ok && d.resultado) {
+    const r = d.resultado;
+    const emoji = r.pais_emoji || "";
+    statusEl.innerHTML = `✅ Conexión exitosa — IP: <code>${r.ip}</code> · Score: <strong>${r.score}/100</strong> · País: ${emoji} ${r.pais || "—"} · ISP: ${r.isp || "—"}`;
+    statusEl.style.color = "var(--green)";
+    toast("Conexión con AbuseIPDB verificada.", "success");
+  } else {
+    statusEl.textContent = `❌ ${d.error || "Error al probar la API key."}`;
+    statusEl.style.color = "var(--red)";
+    toast(d.error || "Error al probar.", "error");
+  }
 }
 
 // ══════════════════════════════════════════════════════════════

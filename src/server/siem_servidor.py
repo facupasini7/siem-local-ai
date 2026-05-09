@@ -9,6 +9,7 @@ from pathlib import Path
 
 import database  # módulo local — maneja toda la persistencia en SQLite
 import mitre     # módulo local — enriquecimiento MITRE ATT&CK
+import abuseipdb # módulo local — threat intelligence de IPs
 
 # ─── CONFIGURACION ───────────────────────────────────────────
 # Raíz del proyecto: src/server/ → src/ → raíz
@@ -391,6 +392,12 @@ def procesar_ciclo():
                 mitre.enriquecer_alerta(analysis, logs)
                 if analysis.get("tacticas"):
                     log(f"  ATT&CK: {', '.join(analysis['tacticas'])}")
+
+                # Enriquecer con reputación de IP (AbuseIPDB)
+                abuseipdb.enriquecer_analisis(analysis)
+                if analysis.get("ip_score") is not None:
+                    emoji = analysis.get("ip_info", {}).get("pais_emoji", "")
+                    log(f"  IP {ip}: score={analysis['ip_score']} {emoji} ({analysis.get('ip_pais','-')})")
 
                 # Garantizar que la severidad Python (determinista) sea el piso.
                 # El LLM puede devolver algo menor por alucinación; Python no se equivoca.

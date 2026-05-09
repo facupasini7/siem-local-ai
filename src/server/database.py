@@ -239,6 +239,10 @@ def init_db():
             # MITRE ATT&CK: tácticas y técnicas detectadas en la alerta (JSON arrays)
             "ALTER TABLE alertas ADD COLUMN tacticas TEXT DEFAULT '[]'",
             "ALTER TABLE alertas ADD COLUMN tecnicas TEXT DEFAULT '[]'",
+            # AbuseIPDB: reputación de la IP de origen
+            "ALTER TABLE alertas ADD COLUMN ip_score   INTEGER DEFAULT NULL",
+            "ALTER TABLE alertas ADD COLUMN ip_pais    TEXT    DEFAULT NULL",
+            "ALTER TABLE alertas ADD COLUMN ip_reports INTEGER DEFAULT NULL",
         ]:
             try:
                 c.execute(migration)
@@ -318,6 +322,8 @@ def init_db():
             ("telegram_bot_token",        ""),
             ("telegram_chat_id",          ""),
             ("telegram_activo",           "0"),
+            # AbuseIPDB — Threat Intelligence
+            ("abuseipdb_api_key",         ""),
             # Retención de datos
             ("alerta_retencion_dias",     "90"),
         ]
@@ -374,6 +380,21 @@ def init_db():
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_auditoria_ts      ON auditoria(ts DESC)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_auditoria_usuario  ON auditoria(usuario)")
+
+        # ── Caché de reputación de IPs (AbuseIPDB) ──────────────────────────
+        # TTL gestionado por Python: consultado_at + 24h. Si expiró, se vuelve a consultar.
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS ip_reputacion (
+                ip            TEXT PRIMARY KEY,
+                score         INTEGER NOT NULL,
+                pais          TEXT,
+                pais_emoji    TEXT,
+                isp           TEXT,
+                total_reports INTEGER DEFAULT 0,
+                categorias    TEXT DEFAULT '[]',
+                consultado_at TEXT NOT NULL
+            )
+        """)
 
         # ── Índices para las consultas más frecuentes del dashboard ──────────
         # Sin índices, cada filtro haría un full-scan de la tabla alertas.
@@ -434,6 +455,10 @@ def guardar_alerta(analysis: dict, ts: str) -> tuple:
         # Serializar ATT&CK para almacenamiento
         tacticas_json = json.dumps(analysis.get("tacticas", []), ensure_ascii=False)
         tecnicas_json = json.dumps(analysis.get("tecnicas", []), ensure_ascii=False)
+        # Datos de reputación IP (AbuseIPDB)
+        ip_score   = analysis.get("ip_score")
+        ip_pais    = analysis.get("ip_pais")
+        ip_reports = analysis.get("ip_reports")
 
         if fila:
             alerta_id = fila[0]
@@ -444,10 +469,15 @@ def guardar_alerta(analysis: dict, ts: str) -> tuple:
                     summary            = ?,
                     accion_recomendada = ?,
                     tacticas           = ?,
-                    tecnicas           = ?
+                    tecnicas           = ?,
+                    ip_score           = ?,
+                    ip_pais            = ?,
+                    ip_reports         = ?
                 WHERE id = ?
             """, (ts, analysis.get("summary", ""), analysis.get("accion_recomendada", ""),
-                  tacticas_json, tecnicas_json, alerta_id))
+                  tacticas_json, tecnicas_json,
+                  ip_score, ip_pais, ip_reports,
+                  alerta_id))
             conn.commit()
             return alerta_id, False
 
@@ -455,16 +485,17 @@ def guardar_alerta(analysis: dict, ts: str) -> tuple:
         c.execute("""
             INSERT INTO alertas
                 (timestamp, severity, fuente, ip, summary, accion_recomendada,
-                 ocurrencias, ultima_vez, tacticas, tecnicas)
-            VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+                 ocurrencias, ultima_vez, tacticas, tecnicas,
+                 ip_score, ip_pais, ip_reports)
+            VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
         """, (
             ts, severity, fuente,
             analysis.get("ip", ""),
             analysis.get("summary", ""),
             analysis.get("accion_recomendada", ""),
             ts,
-            tacticas_json,
-            tecnicas_json,
+            tacticas_json, tecnicas_json,
+            ip_score, ip_pais, ip_reports,
         ))
         alerta_id = c.lastrowid
 
@@ -502,7 +533,8 @@ def leer_alertas() -> list:
                 COALESCE(a.ultima_vez, a.timestamp) AS ultima_vez,
                 COALESCE(t.estado, 'nueva')         AS estado,
                 COALESCE(a.tacticas, '[]')           AS tacticas,
-                COALESCE(a.tecnicas, '[]')           AS tecnicas
+                COALESCE(a.tecnicas, '[]')           AS tecnicas,
+                a.ip_score, a.ip_pais, a.ip_reports
             FROM alertas a
             LEFT JOIN tickets t ON t.alerta_id = a.id
             ORDER BY a.id DESC
@@ -700,7 +732,7 @@ def obtener_usuario(username: str) -> dict | None:
 
 
 # Claves de config_global que contienen datos sensibles y deben cifrarse
-_CONFIG_CIFRADAS = {"telegram_bot_token"}
+_CONFIG_CIFRADAS = {"telegram_bot_token", "abuseipdb_api_key"}
 
 def get_config_global(clave: str, default: str = "") -> str:
     conn = get_connection()
@@ -1488,7 +1520,8 @@ def leer_alertas_filtradas(
                 COALESCE(a.ultima_vez, a.timestamp) AS ultima_vez,
                 COALESCE(t.estado, 'nueva')         AS estado,
                 COALESCE(a.tacticas, '[]')           AS tacticas,
-                COALESCE(a.tecnicas, '[]')           AS tecnicas
+                COALESCE(a.tecnicas, '[]')           AS tecnicas,
+                a.ip_score, a.ip_pais, a.ip_reports
             FROM alertas a
             LEFT JOIN tickets t ON t.alerta_id = a.id
             {where}
@@ -1612,5 +1645,94 @@ def leer_acciones_distintas() -> list:
             "SELECT DISTINCT accion FROM auditoria ORDER BY accion ASC"
         ).fetchall()
         return [r[0] for r in rows]
+    finally:
+        conn.close()
+
+
+# ─── CACHÉ AbuseIPDB ─────────────────────────────────────────
+
+_CACHE_TTL_HORAS = 24
+
+def get_ip_reputacion(ip: str) -> dict | None:
+    """
+    Retorna los datos de reputación de una IP desde la caché, o None si no
+    existe o si la entrada expiró (TTL: 24 horas).
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT * FROM ip_reputacion WHERE ip = ?", (ip,)
+        ).fetchone()
+        if not row:
+            return None
+        # Verificar TTL
+        try:
+            consultado = datetime.strptime(row["consultado_at"], "%Y-%m-%d %H:%M:%S")
+            if datetime.now() - consultado > timedelta(hours=_CACHE_TTL_HORAS):
+                conn.execute("DELETE FROM ip_reputacion WHERE ip = ?", (ip,))
+                conn.commit()
+                return None
+        except Exception:
+            return None
+        return {
+            "ip":            row["ip"],
+            "score":         row["score"],
+            "pais":          row["pais"] or "",
+            "pais_emoji":    row["pais_emoji"] or "",
+            "isp":           row["isp"] or "",
+            "total_reports": row["total_reports"] or 0,
+            "categorias":    json.loads(row["categorias"] or "[]"),
+            "sospechosa":    row["score"] >= 75,
+        }
+    finally:
+        conn.close()
+
+
+def set_ip_reputacion(ip: str, data: dict):
+    """Guarda o actualiza la reputación de una IP en la caché."""
+    conn = get_connection()
+    try:
+        conn.execute("""
+            INSERT OR REPLACE INTO ip_reputacion
+                (ip, score, pais, pais_emoji, isp, total_reports, categorias, consultado_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            ip,
+            data.get("score", 0),
+            data.get("pais", ""),
+            data.get("pais_emoji", ""),
+            data.get("isp", ""),
+            data.get("total_reports", 0),
+            json.dumps(data.get("categorias", []), ensure_ascii=False),
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        ))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def leer_ips_sospechosas(limite: int = 20) -> list:
+    """Retorna las IPs más maliciosas de la caché, ordenadas por score descendente."""
+    conn = get_connection()
+    try:
+        rows = conn.execute("""
+            SELECT ip, score, pais, pais_emoji, isp, total_reports, categorias
+            FROM ip_reputacion
+            WHERE score >= 75
+            ORDER BY score DESC, total_reports DESC
+            LIMIT ?
+        """, (limite,)).fetchall()
+        result = []
+        for r in rows:
+            result.append({
+                "ip":            r["ip"],
+                "score":         r["score"],
+                "pais":          r["pais"] or "",
+                "pais_emoji":    r["pais_emoji"] or "",
+                "isp":           r["isp"] or "",
+                "total_reports": r["total_reports"] or 0,
+                "categorias":    json.loads(r["categorias"] or "[]"),
+            })
+        return result
     finally:
         conn.close()

@@ -10,6 +10,7 @@ from pathlib import Path
 import database  # módulo local — persistencia SQLite
 import auth      # módulo local — autenticación bcrypt + sesiones
 import mitre     # módulo local — enriquecimiento MITRE ATT&CK
+import abuseipdb # módulo local — threat intelligence de IPs
 import secrets as _secrets_mod
 
 # ── Tokens temporales para login en dos pasos (TOTP) ─────────
@@ -634,11 +635,27 @@ class Handler(BaseHTTPRequestHandler):
 
         elif path == "/api/mitre/stats":
             # Estadísticas ATT&CK: distribución por táctica y top técnicas.
-            # Usado por el widget MITRE del resumen y la pestaña de alertas.
             if not self._require_permission("ver_alertas"):
                 return
             alertas = database.leer_alertas()
             self.send_json(mitre.estadisticas(alertas))
+
+        elif path == "/api/config/abuseipdb":
+            # Configuración de AbuseIPDB (solo admin)
+            if not self._require_permission("editar_config"):
+                return
+            key = database.get_config_global("abuseipdb_api_key", "")
+            key_masked = f"{'*' * (len(key) - 6)}{key[-6:]}" if len(key) > 6 else ("*" * len(key))
+            self.send_json({
+                "configurado":  bool(key),
+                "key_masked":   key_masked,
+            })
+
+        elif path == "/api/abuseipdb/ips-sospechosas":
+            # Top IPs maliciosas detectadas (desde la caché de consultas)
+            if not self._require_permission("ver_alertas"):
+                return
+            self.send_json(database.leer_ips_sospechosas())
 
         elif path == "/api/usuarios":
             if not self._require_permission("ver_usuarios"):
@@ -1376,6 +1393,39 @@ class Handler(BaseHTTPRequestHandler):
                 database.set_config_global("telegram_activo", "1" if activo else "0")
                 self.send_json({"ok": True})
 
+        elif path == "/api/config/abuseipdb":
+            # Guardar API key de AbuseIPDB (cifrada)
+            user = self._require_permission("editar_config")
+            if not user:
+                return
+            key = body.get("api_key", "").strip()
+            if not key:
+                self.send_json({"error": "API key vacía."}, 400)
+                return
+            database.set_config_global("abuseipdb_api_key", key)
+            database.registrar_auditoria(
+                user["username"], "modificar", "config", "abuseipdb_api_key",
+                valor_nuevo="configurado"
+            )
+            self.send_json({"ok": True})
+
+        elif path == "/api/config/abuseipdb/test":
+            # Probar la API key consultando una IP conocida como maliciosa
+            user = self._require_permission("editar_config")
+            if not user:
+                return
+            key = database.get_config_global("abuseipdb_api_key", "").strip()
+            if not key:
+                self.send_json({"error": "Configurá la API key primero."}, 400)
+                return
+            # Usar una IP de prueba de la documentación de AbuseIPDB
+            ip_test = body.get("ip", "118.25.6.39")
+            resultado = abuseipdb.consultar_ip(ip_test)
+            if resultado:
+                self.send_json({"ok": True, "resultado": resultado})
+            else:
+                self.send_json({"error": "No se pudo conectar a AbuseIPDB. Verificá la API key."}, 400)
+
         elif path == "/api/config/telegram/test":
             user = self._require_permission("editar_config")
             if not user:
@@ -1552,8 +1602,9 @@ class Handler(BaseHTTPRequestHandler):
                 }],
             }
 
-            # Enriquecer con MITRE ATT&CK antes de guardar
+            # Enriquecer con MITRE ATT&CK y reputación IP antes de guardar
             mitre.enriquecer_alerta(analysis)
+            abuseipdb.enriquecer_analisis(analysis)
 
             alerta_id, es_nueva = database.guardar_alerta(analysis, ts)
             database.registrar_auditoria(
