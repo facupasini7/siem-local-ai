@@ -1347,11 +1347,16 @@ async function doLogin() {
       sessionStorage.setItem("siem_token", data.token);
       if (data.debe_cambiar_password) {
         showForcedPasswordChange();
-      } else if (data.requiere_setup_2fa) {
-        showApp({ username: data.username, rol: data.rol });
-        setTimeout(() => openTotpSetupObligatorio(), 500);
       } else {
-        showApp({ username: data.username, rol: data.rol });
+        // Cargar el perfil completo (con permisos RBAC) antes de mostrar la app
+        const meRes  = await fetch("/api/me", { headers: { Authorization: "Bearer " + data.token } });
+        const meData = meRes.ok ? await meRes.json() : { username: data.username, rol: data.rol, permisos: [] };
+        if (data.requiere_setup_2fa) {
+          showApp(meData);
+          setTimeout(() => openTotpSetupObligatorio(), 500);
+        } else {
+          showApp(meData);
+        }
       }
     } else {
       errEl.textContent   = data.error || "Error al iniciar sesión.";
@@ -1394,11 +1399,16 @@ async function submitLoginTotp() {
       sessionStorage.setItem("siem_token", data.token);
       if (data.debe_cambiar_password) {
         showForcedPasswordChange();
-      } else if (data.requiere_setup_2fa) {
-        showApp({ username: data.username, rol: data.rol });
-        setTimeout(() => openTotpSetupObligatorio(), 500);
       } else {
-        showApp({ username: data.username, rol: data.rol });
+        // Cargar perfil completo (con permisos RBAC) antes de mostrar la app
+        const meRes  = await fetch("/api/me", { headers: { Authorization: "Bearer " + data.token } });
+        const meData = meRes.ok ? await meRes.json() : { username: data.username, rol: data.rol, permisos: [] };
+        if (data.requiere_setup_2fa) {
+          showApp(meData);
+          setTimeout(() => openTotpSetupObligatorio(), 500);
+        } else {
+          showApp(meData);
+        }
       }
     } else {
       errEl.textContent   = data.error || "Código incorrecto.";
@@ -1723,25 +1733,43 @@ function statCard(icon, label, value, cls) {
 }
 
 async function renderAgentesStrip() {
-  const res = await api("GET", "/api/agentes");
-  if (!res || !res.ok) return;
-  const agentes = await res.json();
+  // Usar /api/agentes/tracking (tabla agentes) que tiene ultimo_contacto real,
+  // no /api/agentes (config_agentes/whitelist) que solo tiene estado aprobado/pendiente
+  const res = await api("GET", "/api/agentes/tracking");
   const strip = document.getElementById("ov-agentes");
 
+  // Fallback: si el endpoint de tracking no existe, usar la whitelist
+  const agentes = (res && res.ok) ? await res.json() : [];
+
   if (!agentes.length) {
-    strip.innerHTML = `<div style="font-size:13px;color:var(--text-2)">Sin agentes configurados.</div>`;
+    // Si no hay tracking, mostrar desde whitelist como antes
+    const res2 = await api("GET", "/api/agentes");
+    const lista = (res2 && res2.ok) ? await res2.json() : [];
+    if (!lista.length) {
+      strip.innerHTML = `<div style="font-size:13px;color:var(--text-2)">Sin agentes configurados.</div>`;
+      return;
+    }
+    strip.innerHTML = lista.map(ag => `<div class="agente-mini">
+      <div class="agente-mini-dot ${ag.estado === "activo" ? "on" : "off"}"></div>
+      <div class="agente-mini-info">
+        <div class="name">${escHtml(ag.nombre)}</div>
+        <div class="meta">${escHtml(ag.ip || "IP no configurada")} · ${escHtml(ag.tipo || "?")}</div>
+      </div>
+    </div>`).join("");
     return;
   }
 
-  // Un agente se considera "online" si su último contacto fue hace menos de 10 min
+  // Con datos de tracking: online si último contacto hace menos de 10 minutos
+  const ahoraMs = Date.now();
   strip.innerHTML = agentes.map(ag => {
-    const enLinea = ag.estado === "activo";
-    // Verificar si el agente del tracking histórico (tabla agentes) tuvo contacto reciente
+    const ultimoMs = ag.ultimo_contacto ? new Date(ag.ultimo_contacto).getTime() : 0;
+    const enLinea  = ultimoMs && (ahoraMs - ultimoMs) < 10 * 60 * 1000;
+    const hace     = ultimoMs ? relTime(ag.ultimo_contacto) : "sin contacto";
     return `<div class="agente-mini">
       <div class="agente-mini-dot ${enLinea ? "on" : "off"}"></div>
       <div class="agente-mini-info">
-        <div class="name">${ag.nombre}</div>
-        <div class="meta">${ag.ip || "IP no configurada"} · ${ag.tipo || "?"}</div>
+        <div class="name">${escHtml(ag.nombre)}</div>
+        <div class="meta">${escHtml(ag.ip || "?")} · último: ${hace}</div>
       </div>
     </div>`;
   }).join("");
@@ -2077,22 +2105,25 @@ async function crearAgente() {
     closeModal();
     loadAgentes();
     toast(`Agente "${nombre}" creado.`, "success");
-    // Mostrar la API key generada
-    openModal("Agente creado — API Key", `
+    // Mostrar la API key generada — sin interpolación en onclick (XSS)
+    const apiKey = d.agente?.api_key || "";
+    const modalBody = document.createElement("div");
+    modalBody.innerHTML = `
       <div style="font-size:13px;color:var(--text-2);margin-bottom:14px">
-        El agente <strong>${nombre}</strong> fue creado con estado <strong>ACTIVO</strong>.
+        El agente <strong>${escHtml(nombre)}</strong> fue creado con estado <strong>ACTIVO</strong>.
         Copiá esta API key y configurala en el agente:
       </div>
       <div style="font-family:monospace;font-size:13px;background:var(--bg);border:1px solid var(--border);
-           border-radius:8px;padding:12px 14px;word-break:break-all;color:var(--green)">${d.agente.api_key}</div>
-      <button class="btn-primary" style="margin-top:14px;width:100%"
-        onclick="navigator.clipboard.writeText('${d.agente.api_key}');toast('API key copiada.')">
-        📋 Copiar API key
-      </button>
+           border-radius:8px;padding:12px 14px;word-break:break-all;color:var(--green)">${escHtml(apiKey)}</div>
+      <button class="btn-primary" id="btn-copy-apikey" style="margin-top:14px;width:100%">📋 Copiar API key</button>
       <div class="form-note" style="margin-top:12px">
         <strong>En config.json del agente</strong>, agregá: <code>"api_key": "..."</code><br>
         El campo es opcional: si no lo configurás, el agente se valida por nombre+IP.
-      </div>`);
+      </div>`;
+    modalBody.querySelector("#btn-copy-apikey").addEventListener("click", () => {
+      navigator.clipboard.writeText(apiKey).then(() => toast("API key copiada."));
+    });
+    openModalNode("Agente creado — API Key", modalBody);
   } else toast(d.error || "Error al crear agente.", "error");
 }
 
@@ -2108,13 +2139,16 @@ async function loadConfig() {
   lista.innerHTML = carpetas.length
     ? carpetas.map(c => `
         <div class="carpeta-item">
-          <span class="carpeta-path">📁 ${c}</span>
-          <button class="btn-danger" style="padding:4px 12px;font-size:12px"
-            onclick="eliminarCarpeta('${c.replace(/\\/g,"\\\\").replace(/'/g,"\\'")}')">
-            Eliminar
-          </button>
+          <span class="carpeta-path">📁 ${escHtml(c)}</span>
+          <button class="btn-danger btn-elim-carpeta" data-carpeta="${escHtml(c)}"
+                  style="padding:4px 12px;font-size:12px">Eliminar</button>
         </div>`).join("")
     : `<div style="padding:16px;font-size:13px;color:var(--text-2)">No hay carpetas monitoreadas.</div>`;
+
+  // Event delegation — leer la carpeta desde data-attribute, no de onclick interpolado
+  lista.querySelectorAll(".btn-elim-carpeta").forEach(btn => {
+    btn.addEventListener("click", () => eliminarCarpeta(btn.dataset.carpeta));
+  });
 }
 
 async function agregarCarpeta() {
@@ -3080,7 +3114,8 @@ function openModalNode(title, bodyNode, opts = {}) {
 }
 function closeModal(e) {
   if (_modalNoClose) return; // no se puede cerrar
-  if (e && e.target !== document.getElementById("modal")) return;
+  // Cerrar solo si el click fue directamente en el overlay (no en un hijo sin stopPropagation)
+  if (e && e.target !== e.currentTarget) return;
   document.getElementById("modal").style.display = "none";
 }
 document.addEventListener("keydown", e => {

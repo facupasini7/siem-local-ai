@@ -15,6 +15,7 @@ import secrets as _secrets_mod
 # Mapa: temp_token → {"username": str, "expires": datetime}
 # Expiran en 5 minutos. Se limpian al usar o al expirar.
 _pending_totp: dict = {}
+_pending_totp_lock  = threading.Lock()   # protege acceso concurrente al dict
 
 
 def _enviar_telegram_fim(summary: str, fuente: str, severity: str, archivo: str, ip: str = ""):
@@ -623,6 +624,13 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self.send_json(database.leer_config_agentes())
 
+        elif path == "/api/agentes/tracking":
+            # Datos de tracking histórico (tabla agentes): nombre, ip, tipo, ultimo_contacto.
+            # La strip del resumen usa este endpoint para calcular estado online/offline en tiempo real.
+            if not self._require_permission("ver_agentes"):
+                return
+            self.send_json(database.leer_agentes())
+
         elif path == "/api/usuarios":
             if not self._require_permission("ver_usuarios"):
                 return
@@ -753,10 +761,11 @@ class Handler(BaseHTTPRequestHandler):
             elif resultado and resultado.get("requiere_totp"):
                 # Credenciales válidas pero tiene TOTP — generar token temporal
                 temp = _secrets_mod.token_hex(24)
-                _pending_totp[temp] = {
-                    "username": username,
-                    "expires":  datetime.now() + timedelta(minutes=5)
-                }
+                with _pending_totp_lock:
+                    _pending_totp[temp] = {
+                        "username": username,
+                        "expires":  datetime.now() + timedelta(minutes=5)
+                    }
                 self.send_json({"requiere_totp": True, "totp_token": temp})
             elif resultado:
                 database.registrar_auditoria(username, "login", "sesion")
@@ -775,13 +784,13 @@ class Handler(BaseHTTPRequestHandler):
             totp_token = body.get("totp_token", "")
             code       = body.get("code", "").strip()
 
-            # Limpiar tokens expirados
+            # Limpiar tokens expirados y obtener el pendiente — todo bajo lock
             ahora = datetime.now()
-            expirados = [k for k, v in _pending_totp.items() if ahora > v["expires"]]
-            for k in expirados:
-                _pending_totp.pop(k, None)
-
-            pending = _pending_totp.get(totp_token)
+            with _pending_totp_lock:
+                expirados = [k for k, v in _pending_totp.items() if ahora > v["expires"]]
+                for k in expirados:
+                    _pending_totp.pop(k, None)
+                pending = _pending_totp.get(totp_token)
             if not pending:
                 self.send_json({"error": "Sesión expirada. Iniciá sesión nuevamente."}, 401)
                 return
@@ -805,20 +814,18 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
             # TOTP correcto → consumir token temporal y crear sesión real
-            _pending_totp.pop(totp_token, None)
+            with _pending_totp_lock:
+                _pending_totp.pop(totp_token, None)
             usuario = database.obtener_usuario(username)
             token   = database.crear_sesion(usuario["id"])
             database.registrar_auditoria(username, "login_2fa", "sesion")
 
-            forzar = database.get_config_global("forzar_2fa") == "1"
             resp = {
                 "token":                 token,
                 "rol":                   usuario["rol"],
                 "username":              usuario["username"],
                 "debe_cambiar_password": bool(usuario.get("debe_cambiar_password", 0)),
             }
-            if forzar and not totp_secret:
-                resp["requiere_setup_2fa"] = True
             self.send_json(resp)
 
         # ── Auth: Logout ──────────────────────────────────────
@@ -971,8 +978,9 @@ class Handler(BaseHTTPRequestHandler):
             if not username or not password:
                 self.send_json({"error": "Usuario y contraseña son obligatorios."}, 400)
                 return
-            if len(password) < 6:
-                self.send_json({"error": "La contraseña debe tener al menos 6 caracteres."}, 400)
+            errores_pw = auth.validar_password_policy(password)
+            if errores_pw:
+                self.send_json({"error": " ".join(errores_pw)}, 400)
                 return
             if rol not in ("admin", "analista"):
                 self.send_json({"error": "Rol inválido."}, 400)

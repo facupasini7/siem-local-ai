@@ -413,17 +413,20 @@ def guardar_alerta(analysis: dict, ts: str) -> tuple:
         fuente   = analysis.get("fuente", analysis.get("agente", "desconocido"))
         severity = analysis.get("severity", "low")
 
-        # Buscar alerta abierta reciente del mismo origen y severidad
+        # Buscar alerta abierta reciente del mismo origen y severidad.
+        # El corte se calcula en Python para evitar mezclar datetime('now','localtime')
+        # de SQLite con los timestamps locales almacenados por Python datetime.now().
+        cutoff = (datetime.now() - timedelta(hours=DEDUP_VENTANA_HORAS)).strftime("%Y-%m-%d %H:%M:%S")
         fila = c.execute("""
             SELECT a.id FROM alertas a
             LEFT JOIN tickets t ON t.alerta_id = a.id
             WHERE a.fuente = ?
               AND a.severity = ?
               AND COALESCE(t.estado, 'nueva') != 'cerrada'
-              AND datetime(a.ultima_vez) > datetime('now', 'localtime', ?)
+              AND datetime(a.ultima_vez) > ?
             ORDER BY a.id DESC
             LIMIT 1
-        """, (fuente, severity, f'-{DEDUP_VENTANA_HORAS} hours')).fetchone()
+        """, (fuente, severity, cutoff)).fetchone()
 
         if fila:
             alerta_id = fila[0]
@@ -647,10 +650,13 @@ def crear_usuario(username: str, password_hash: str, rol: str = "analista",
     conn = get_connection()
     try:
         c = conn.cursor()
+        # Buscar el rol_id correspondiente al nombre de rol para el RBAC
+        rol_row = c.execute("SELECT id FROM roles WHERE nombre = ?", (rol,)).fetchone()
+        rol_id  = rol_row["id"] if rol_row else None
         c.execute("""
-            INSERT INTO usuarios (username, password_hash, rol, debe_cambiar_password)
-            VALUES (?, ?, ?, ?)
-        """, (username, password_hash, rol, debe_cambiar_password))
+            INSERT INTO usuarios (username, password_hash, rol, rol_id, debe_cambiar_password)
+            VALUES (?, ?, ?, ?, ?)
+        """, (username, password_hash, rol, rol_id, debe_cambiar_password))
         conn.commit()
         return c.lastrowid
     finally:
@@ -1551,7 +1557,6 @@ def leer_auditoria_filtrada(
 
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
-        conn.row_factory = sqlite3.Row
         c = conn.cursor()
         c.execute(f"""
             SELECT id, ts, usuario, accion, entidad, id_entidad, valor_anterior, valor_nuevo

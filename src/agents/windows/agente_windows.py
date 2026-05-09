@@ -107,9 +107,9 @@ def get_events_since(since: datetime) -> str:
         $resultado = @()
 
         try {{
-            $seg = Get-WinEvent -LogName Security -MaxEvents 200 -ErrorAction SilentlyContinue |
+            $seg = Get-WinEvent -LogName Security -MaxEvents 500 -ErrorAction SilentlyContinue |
                 Where-Object {{ $_.TimeCreated -gt $desde -and $_.Id -in @({ids_criticos}) }} |
-                Select-Object -First 8 TimeCreated, Id, LevelDisplayName, ProviderName, Message
+                Select-Object -First 50 TimeCreated, Id, LevelDisplayName, ProviderName, Message
             if ($seg) {{
                 $seg | ForEach-Object {{
                     $msg = $_.Message -replace '[`n`r`t]',' '
@@ -182,9 +182,12 @@ def _enviar_alerta_fim(tipo: str, ruta: str):
       CREACION     → medium
       MOVIMIENTO   → medium
     """
+    import urllib.parse as _up
     cfg      = leer_config()
     siem_url = cfg.get("siem_url", "").strip() or _SIEM_URL_DEFAULT
-    fim_url  = siem_url.replace("/api/eventos-externos", "/api/alerta-fim")
+    # Construir la URL de FIM desde la base, sin depender de reemplazar un path específico
+    parsed   = _up.urlparse(siem_url)
+    fim_url  = _up.urlunparse(parsed._replace(path="/api/alerta-fim"))
     ip_local = cfg.get("ip_local", "").strip() or _IP_LOCAL_DEFAULT
 
     body = {

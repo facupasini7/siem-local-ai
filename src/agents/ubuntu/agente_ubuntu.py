@@ -31,11 +31,12 @@ def log(msg: str):
         f.write(txt + "\n")
 
 def get_logs_since(since: datetime) -> str:
-    """Lee logs de auth.log y syslog desde una fecha."""
-    since_str = since.strftime("%b %d %H:%M:%S").replace(" 0", "  ")
+    """Lee logs de auth.log, syslog y kern.log filtrando por timestamp >= since."""
+    # Formato de timestamp que usan los logs de syslog: "May  7 22:54:00"
+    since_ts  = since.timestamp()
     logs      = []
+    year      = since.year  # syslog no incluye el año, lo inferimos
 
-    # auth.log — SSH, sudo, autenticacion
     archivos = [
         "/var/log/auth.log",
         "/var/log/syslog",
@@ -48,17 +49,30 @@ def get_logs_since(since: datetime) -> str:
                 ["sudo", "tail", "-n", "500", archivo],
                 capture_output=True, text=True, timeout=10
             )
-            if result.stdout:
-                # Filtrar solo eventos relevantes
-                for linea in result.stdout.splitlines():
-                    linea_lower = linea.lower()
-                    if any(kw in linea_lower for kw in [
-                        "failed", "error", "invalid", "unauthorized",
-                        "sudo", "su:", "authentication", "connection",
-                        "refused", "timeout", "warning", "critical",
-                        "kernel", "oom", "segfault", "denied"
-                    ]):
-                        logs.append(f"[{archivo.split('/')[-1]}] {linea[:200]}")
+            if not result.stdout:
+                continue
+            for linea in result.stdout.splitlines():
+                linea_lower = linea.lower()
+                # Intentar parsear el timestamp de la línea para filtrar por ventana
+                try:
+                    # Formato típico: "May  7 22:54:00 hostname service: msg"
+                    partes = linea.split()
+                    if len(partes) >= 3:
+                        ts_str = f"{partes[0]} {partes[1]} {partes[2]} {year}"
+                        from datetime import datetime as _dt
+                        linea_dt = _dt.strptime(ts_str, "%b %d %H:%M:%S %Y")
+                        if linea_dt.timestamp() < since_ts:
+                            continue  # línea anterior a la ventana — ignorar
+                except Exception:
+                    pass  # si no se puede parsear el timestamp, incluir igual
+
+                if any(kw in linea_lower for kw in [
+                    "failed", "error", "invalid", "unauthorized",
+                    "sudo", "su:", "authentication", "connection",
+                    "refused", "timeout", "warning", "critical",
+                    "kernel", "oom", "segfault", "denied"
+                ]):
+                    logs.append(f"[{archivo.split('/')[-1]}] {linea[:200]}")
         except Exception as e:
             log(f"Error leyendo {archivo}: {e}")
 
