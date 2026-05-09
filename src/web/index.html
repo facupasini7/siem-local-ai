@@ -1822,15 +1822,22 @@ function buildCard(a) {
 
   const eventos = (a.events || []).map(ev => `
     <div class="evento-item">
-      <span class="ev-id">${(ev.id && !ev.id.startsWith("EVENT_ID")) ? ev.id : "—"}</span>
-      <span>${ev.descripcion || "—"}${ev.riesgo ? ` <em style="color:var(--text-3)">· ${ev.riesgo}</em>` : ""}</span>
+      <span class="ev-id">${(ev.id && !ev.id.startsWith("EVENT_ID")) ? escHtml(ev.id) : "—"}</span>
+      <span>${escHtml(ev.descripcion || "—")}${ev.riesgo ? ` <em style="color:var(--text-3)">· ${escHtml(ev.riesgo)}</em>` : ""}</span>
     </div>`).join("");
 
   const comentarios = (a.comentarios || []).map(c => `
     <div class="comment-item">
-      <div class="comment-ts">${c.ts}</div>
-      <div class="comment-text">${c.texto}</div>
+      <div class="comment-ts">${escHtml(c.ts)}</div>
+      <div class="comment-text">${escHtml(c.texto)}</div>
     </div>`).join("") || `<div style="font-size:13px;color:var(--text-2);margin-bottom:8px">Sin comentarios aún.</div>`;
+
+  const fuente    = escHtml(a.fuente || "—");
+  const summary   = escHtml(a.summary || "—");
+  const accion    = escHtml(a.accion_recomendada || "—");
+  const fuenteCls = (a.fuente||'').includes('ubuntu')||(a.fuente||'').includes('linux') ? 'os-linux'
+                  : (a.fuente||'').includes('windows') ? 'os-windows'
+                  : (a.fuente||'').includes('aws')     ? 'os-aws' : '';
 
   return `
     <div class="alerta-card ${a.severity} ${a.estado}">
@@ -1838,16 +1845,16 @@ function buildCard(a) {
         <span class="badge ${a.severity}">${a.severity}</span>
         <span class="badge-estado ${a.estado}">${etiq[a.estado] || a.estado}</span>
         ${(a.ocurrencias || 1) > 1 ? `<span class="badge-ocurrencias" title="Se repitió ${a.ocurrencias} veces">×${a.ocurrencias}</span>` : ""}
-        <span class="card-summary">${a.summary || "—"}</span>
+        <span class="card-summary">${summary}</span>
         <div class="card-meta">
-          <span class="card-agent ${(a.fuente||'').includes('ubuntu')||((a.fuente||'').includes('linux'))?'os-linux':(a.fuente||'').includes('windows')?'os-windows':(a.fuente||'').includes('aws')?'os-aws':''}">${a.fuente || "—"}</span>
-          <span class="card-ts" title="Primera vez: ${a.timestamp}${(a.ocurrencias||1)>1?' · Última vez: '+a.ultima_vez:''}">
+          <span class="card-agent ${fuenteCls}">${fuente}</span>
+          <span class="card-ts" title="Primera vez: ${escHtml(a.timestamp)}${(a.ocurrencias||1)>1?' · Última vez: '+escHtml(a.ultima_vez):''}">
             ${relTime(a.timestamp)}${(a.ocurrencias||1) > 1 ? ` · última: ${relTime(a.ultima_vez)}` : ""}
           </span>
         </div>
       </div>
       <div class="card-body">
-        <div class="card-accion"><strong>Acción:</strong> ${a.accion_recomendada || "—"}</div>
+        <div class="card-accion"><strong>Acción:</strong> ${accion}</div>
         ${eventos ? `<div class="eventos-lista">${eventos}</div>` : ""}
         <div class="gestion">
           <span class="gestion-label">Estado:</span>${botonesEstado}
@@ -1907,6 +1914,11 @@ function renderAgentes() {
 function buildAgenteCard(ag) {
   const isAdmin = currentUser && currentUser.rol === "admin";
 
+  // Usar data-nombre en el HTML y leerlo desde JS — nunca interpolar en onclick
+  const nombreSeguro = escHtml(ag.nombre || "");
+  const ipSegura     = escHtml(ag.ip || "IP no registrada");
+  const descSegura   = ag.descripcion ? escHtml(ag.descripcion) : "";
+
   const apiKeySection = isAdmin ? `
     <div class="apikey-section">
       <div class="apikey-label">API Key</div>
@@ -1915,20 +1927,20 @@ function buildAgenteCard(ag) {
              onclick="revealKey(this)" title="Clic para revelar">
           ${ag.api_key || "Sin API key"}
         </div>
-        <button class="btn-copy" onclick="copyKey('${ag.api_key || ""}')">Copiar</button>
+        <button class="btn-copy" data-key="${escHtml(ag.api_key || '')}">Copiar</button>
       </div>
     </div>` : "";
 
   const acciones = isAdmin ? `
-    <div class="agente-actions">
+    <div class="agente-actions" data-nombre="${nombreSeguro}">
       ${ag.estado === "pendiente" ? `
-        <button class="btn-action success" onclick="setAgenteEstado('${ag.nombre}','activo')">✓ Aprobar</button>` : ""}
+        <button class="btn-action success btn-ag-aprobar">✓ Aprobar</button>` : ""}
       ${ag.estado === "activo" ? `
-        <button class="btn-action warning" onclick="setAgenteEstado('${ag.nombre}','inactivo')">Desactivar</button>
-        <button class="btn-action" onclick="regenKey('${ag.nombre}')">🔄 Nueva key</button>` : ""}
+        <button class="btn-action warning btn-ag-desactivar">Desactivar</button>
+        <button class="btn-action btn-ag-regenkey">🔄 Nueva key</button>` : ""}
       ${ag.estado === "inactivo" ? `
-        <button class="btn-action success" onclick="setAgenteEstado('${ag.nombre}','activo')">Reactivar</button>` : ""}
-      <button class="btn-action danger" onclick="confirmDeleteAgente('${ag.nombre}')">Eliminar</button>
+        <button class="btn-action success btn-ag-reactivar">Reactivar</button>` : ""}
+      <button class="btn-action danger btn-ag-eliminar">Eliminar</button>
     </div>` : "";
 
   return `
@@ -1936,12 +1948,12 @@ function buildAgenteCard(ag) {
       <div class="agente-card-top ${ag.estado}"></div>
       <div class="agente-card-body">
         <div class="agente-card-name">
-          ${ag.nombre}
+          ${nombreSeguro}
           <span class="tipo-badge">${ag.tipo === "linux" ? "🐧 Linux" : "🪟 Windows"}</span>
         </div>
         <div class="agente-meta-row">
-          <span class="meta-chip">🌐 ${ag.ip || "IP no registrada"}</span>
-          ${ag.descripcion ? `<span class="meta-chip">· ${ag.descripcion}</span>` : ""}
+          <span class="meta-chip">🌐 ${ipSegura}</span>
+          ${descSegura ? `<span class="meta-chip">· ${descSegura}</span>` : ""}
         </div>
         <div class="agente-status">
           <div class="status-dot ${ag.estado}"></div>
@@ -1967,6 +1979,24 @@ function copyKey(key) {
     .catch(() => toast("No se pudo copiar.", "error"));
 }
 
+// Event delegation para botones de agentes — evita inyección XSS en onclick inline
+document.addEventListener("click", function(e) {
+  // Botón copiar API key
+  if (e.target.classList.contains("btn-copy")) {
+    copyKey(e.target.dataset.key || "");
+    return;
+  }
+  // Botones de acción de agente
+  const panel = e.target.closest(".agente-actions[data-nombre]");
+  if (!panel) return;
+  const nombre = panel.dataset.nombre;   // nombre leído del DOM, ya escapado al renderizar
+  if (e.target.classList.contains("btn-ag-aprobar"))    { setAgenteEstado(nombre,"activo");   return; }
+  if (e.target.classList.contains("btn-ag-desactivar")) { setAgenteEstado(nombre,"inactivo"); return; }
+  if (e.target.classList.contains("btn-ag-reactivar"))  { setAgenteEstado(nombre,"activo");   return; }
+  if (e.target.classList.contains("btn-ag-regenkey"))   { regenKey(nombre);                   return; }
+  if (e.target.classList.contains("btn-ag-eliminar"))   { confirmDeleteAgente(nombre);        return; }
+});
+
 async function setAgenteEstado(nombre, estado) {
   const res = await api("POST", "/api/agentes/estado", { nombre, estado });
   if (res && res.ok) { toast(`Agente ${estado}.`); loadAgentes(); }
@@ -1980,15 +2010,19 @@ async function regenKey(nombre) {
     const d = await res.json();
     toast("Nueva API key generada. Actualizala en el agente.", "warning");
     loadAgentes();
-    openModal("Nueva API Key generada", `
+    // Crear modal sin interpolación en onclick — usamos data attribute
+    const modalBody = document.createElement("div");
+    modalBody.innerHTML = `
       <div style="font-size:13px;color:var(--text-2);margin-bottom:14px">
-        Copiá esta key y actualizala en la configuración del agente <strong>${nombre}</strong>:
+        Copiá esta key y actualizala en la configuración del agente <strong>${escHtml(nombre)}</strong>:
       </div>
       <div style="font-family:monospace;font-size:13px;background:var(--bg);border:1px solid var(--border);
-           border-radius:8px;padding:12px 14px;word-break:break-all;color:var(--yellow)">${d.api_key}</div>
-      <button class="btn-primary" style="margin-top:14px;width:100%" onclick="navigator.clipboard.writeText('${d.api_key}');toast('Copiada.')">
-        📋 Copiar key
-      </button>`);
+           border-radius:8px;padding:12px 14px;word-break:break-all;color:var(--yellow)">${escHtml(d.api_key)}</div>
+      <button class="btn-primary" id="btn-copy-newkey" style="margin-top:14px;width:100%">📋 Copiar key</button>`;
+    modalBody.querySelector("#btn-copy-newkey").addEventListener("click", () => {
+      navigator.clipboard.writeText(d.api_key).then(() => toast("Copiada."));
+    });
+    openModalNode("Nueva API Key generada", modalBody);
   } else toast("Error al regenerar key.", "error");
 }
 
@@ -3029,7 +3063,18 @@ function openModal(title, bodyHTML, opts = {}) {
   document.getElementById("modal-body").innerHTML    = bodyHTML;
   const modal = document.getElementById("modal");
   modal.style.display = "flex";
-  // Ocultar botón X si es obligatorio
+  const closeBtn = modal.querySelector(".modal-close");
+  if (closeBtn) closeBtn.style.display = _modalNoClose ? "none" : "";
+}
+function openModalNode(title, bodyNode, opts = {}) {
+  // Versión segura de openModal que acepta un nodo DOM en vez de HTML crudo
+  _modalNoClose = opts.noClose || false;
+  document.getElementById("modal-title").textContent = title;
+  const body = document.getElementById("modal-body");
+  body.innerHTML = "";
+  body.appendChild(bodyNode);
+  const modal = document.getElementById("modal");
+  modal.style.display = "flex";
   const closeBtn = modal.querySelector(".modal-close");
   if (closeBtn) closeBtn.style.display = _modalNoClose ? "none" : "";
 }

@@ -15,6 +15,16 @@ try:
 except AttributeError:
     pass  # No es Windows
 
+def _startupinfo():
+    """STARTUPINFO con SW_HIDE: oculta la ventana de consola del subproceso."""
+    try:
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        si.wShowWindow = subprocess.SW_HIDE
+        return si
+    except Exception:
+        return None
+
 # ─── CONFIGURACION ───────────────────────────────────────────
 # Raíz del proyecto: src/agents/windows/ → src/agents/ → src/ → raíz
 _ROOT            = Path(__file__).parent.parent.parent.parent
@@ -49,29 +59,26 @@ def leer_config() -> dict:
         return {"carpetas_monitoreadas": [], "api_key": "", "siem_url": "", "ip_local": ""}
 
 def aplicar_sacl(carpeta: str):
+    # La ruta se pasa como argumento separado al script para evitar
+    # inyección de comandos via interpolación de strings en PowerShell.
+    script = (
+        "param([string]$path)\n"
+        "if (-not (Test-Path $path)) { Write-Output 'ERROR: La carpeta no existe: ' + $path; return }\n"
+        "$acl = Get-Acl -Path $path\n"
+        "$sid = New-Object System.Security.Principal.SecurityIdentifier('S-1-1-0')\n"
+        "$regla = New-Object System.Security.AccessControl.FileSystemAuditRule("
+        "$sid,'ReadData,WriteData,Delete','ContainerInherit,ObjectInherit','None','Success')\n"
+        "$acl.AddAuditRule($regla)\n"
+        "Set-Acl -Path $path -AclObject $acl\n"
+        "Write-Output ('OK: SACL aplicado en ' + $path)"
+    )
     cmd = [
-        "powershell", "-Command",
-        f"""
-        $path = "{carpeta}"
-        if (-not (Test-Path $path)) {{
-            Write-Output "ERROR: La carpeta no existe: $path"
-            return
-        }}
-        $acl = Get-Acl -Path $path
-        $sid = New-Object System.Security.Principal.SecurityIdentifier("S-1-1-0")
-        $regla = New-Object System.Security.AccessControl.FileSystemAuditRule(
-            $sid,
-            "ReadData,WriteData,Delete",
-            "ContainerInherit,ObjectInherit",
-            "None",
-            "Success"
-        )
-        $acl.AddAuditRule($regla)
-        Set-Acl -Path $path -AclObject $acl
-        Write-Output "OK: SACL aplicado en $path"
-        """
+        "powershell", "-NoProfile", "-NonInteractive",
+        "-Command", script,   # script sin interpolación de carpeta
+        "-path", carpeta      # ruta como argumento separado, no embebida en el script
     ]
-    result = subprocess.run(cmd, capture_output=True, encoding="utf-8", errors="replace", timeout=15, creationflags=_CREATIONFLAGS)
+    result = subprocess.run(cmd, capture_output=True, encoding="utf-8", errors="replace", timeout=15,
+                            creationflags=_CREATIONFLAGS, startupinfo=_startupinfo())
     return result.stdout.strip()
 
 def aplicar_sacls_configuradas():
@@ -132,7 +139,7 @@ def get_events_since(since: datetime) -> str:
     ]
     result = subprocess.run(
         cmd, capture_output=True, encoding="utf-8", errors="replace", timeout=60,
-        creationflags=_CREATIONFLAGS
+        creationflags=_CREATIONFLAGS, startupinfo=_startupinfo()
     )
     if result.stdout and result.stdout.strip():
         return "\n".join(l for l in result.stdout.strip().splitlines() if l.strip())

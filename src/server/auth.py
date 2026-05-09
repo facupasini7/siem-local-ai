@@ -54,12 +54,12 @@ def init_admin_if_needed():
     Crea el usuario administrador por defecto si no existe ningún usuario en la DB.
     Se llama una sola vez al arrancar dashboard.py.
 
-    Credenciales por defecto:
-      Usuario:  admin
-      Password: admin123
+    La contraseña se genera aleatoriamente en el primer arranque y se muestra
+    UNA SOLA VEZ en la consola. No existe contraseña por defecto predecible.
 
     ⚠ El admin DEBE cambiar la contraseña desde el Dashboard en el primer login.
     """
+    import secrets as _sec
     conn = database.get_connection()
     try:
         count = conn.execute("SELECT COUNT(*) FROM usuarios").fetchone()[0]
@@ -68,16 +68,18 @@ def init_admin_if_needed():
     finally:
         conn.close()
 
-    # Crear el admin por defecto con bandera de cambio obligatorio de contraseña
-    password_hash = hash_password("admin123")
+    # Contraseña aleatoria segura — token de 16 bytes en base64 URL-safe (~22 chars)
+    password_inicial = _sec.token_urlsafe(16)
+    password_hash = hash_password(password_inicial)
     database.crear_usuario("admin", password_hash, "admin", debe_cambiar_password=1)
 
-    print("=" * 55)
+    print("=" * 60)
     print("  [AUTH] Primer arranque — usuario admin creado")
     print("  [AUTH]   Usuario:  admin")
-    print("  [AUTH]   Password: admin123")
-    print("  [AUTH]   ⚠  Cambiar contraseña desde el Dashboard!")
-    print("=" * 55)
+    print(f"  [AUTH]   Password: {password_inicial}")
+    print("  [AUTH]   ⚠  Esta contraseña se muestra UNA SOLA VEZ.")
+    print("  [AUTH]   ⚠  Cambiar desde el Dashboard en el primer login.")
+    print("=" * 60)
 
 
 # ─── LOGIN Y SESIONES ─────────────────────────────────────────

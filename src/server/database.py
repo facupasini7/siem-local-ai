@@ -1132,8 +1132,10 @@ def validar_agente_acceso(nombre: str, ip: str, api_key: str = None) -> tuple:
         if agente["estado"] == "inactivo":
             return (False, f"Agente '{nombre}' desactivado.")
 
-        # estado == 'activo' — validar api_key si ambos lados la tienen configurada
-        if agente.get("api_key") and api_key:
+        # estado == 'activo' — si el agente tiene api_key configurada, el cliente DEBE enviarla
+        if agente.get("api_key"):
+            if not api_key:
+                return (False, "Este agente requiere API key para autenticarse.")
             # Descifrar la key almacenada antes de comparar
             stored_key = encryption.decrypt(agente["api_key"])
             # secrets.compare_digest evita timing attacks (comparación de longitud constante)
