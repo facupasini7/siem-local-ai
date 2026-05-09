@@ -236,6 +236,9 @@ def init_db():
             "ALTER TABLE usuarios ADD COLUMN rol_id INTEGER REFERENCES roles(id)",
             # TOTP: secret base32 para recuperación de contraseña
             "ALTER TABLE usuarios ADD COLUMN totp_secret TEXT",
+            # MITRE ATT&CK: tácticas y técnicas detectadas en la alerta (JSON arrays)
+            "ALTER TABLE alertas ADD COLUMN tacticas TEXT DEFAULT '[]'",
+            "ALTER TABLE alertas ADD COLUMN tecnicas TEXT DEFAULT '[]'",
         ]:
             try:
                 c.execute(migration)
@@ -428,6 +431,10 @@ def guardar_alerta(analysis: dict, ts: str) -> tuple:
             LIMIT 1
         """, (fuente, severity, cutoff)).fetchone()
 
+        # Serializar ATT&CK para almacenamiento
+        tacticas_json = json.dumps(analysis.get("tacticas", []), ensure_ascii=False)
+        tecnicas_json = json.dumps(analysis.get("tecnicas", []), ensure_ascii=False)
+
         if fila:
             alerta_id = fila[0]
             c.execute("""
@@ -435,23 +442,29 @@ def guardar_alerta(analysis: dict, ts: str) -> tuple:
                 SET ocurrencias        = ocurrencias + 1,
                     ultima_vez         = ?,
                     summary            = ?,
-                    accion_recomendada = ?
+                    accion_recomendada = ?,
+                    tacticas           = ?,
+                    tecnicas           = ?
                 WHERE id = ?
-            """, (ts, analysis.get("summary", ""), analysis.get("accion_recomendada", ""), alerta_id))
+            """, (ts, analysis.get("summary", ""), analysis.get("accion_recomendada", ""),
+                  tacticas_json, tecnicas_json, alerta_id))
             conn.commit()
             return alerta_id, False
 
         # Nueva alerta: insertar fila completa con ticket inicial
         c.execute("""
             INSERT INTO alertas
-                (timestamp, severity, fuente, ip, summary, accion_recomendada, ocurrencias, ultima_vez)
-            VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+                (timestamp, severity, fuente, ip, summary, accion_recomendada,
+                 ocurrencias, ultima_vez, tacticas, tecnicas)
+            VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
         """, (
             ts, severity, fuente,
             analysis.get("ip", ""),
             analysis.get("summary", ""),
             analysis.get("accion_recomendada", ""),
             ts,
+            tacticas_json,
+            tecnicas_json,
         ))
         alerta_id = c.lastrowid
 
@@ -485,9 +498,11 @@ def leer_alertas() -> list:
             SELECT
                 a.id, a.timestamp, a.severity, a.fuente, a.ip,
                 a.summary, a.accion_recomendada, a.created_at,
-                COALESCE(a.ocurrencias, 1) AS ocurrencias,
+                COALESCE(a.ocurrencias, 1)          AS ocurrencias,
                 COALESCE(a.ultima_vez, a.timestamp) AS ultima_vez,
-                COALESCE(t.estado, 'nueva') AS estado
+                COALESCE(t.estado, 'nueva')         AS estado,
+                COALESCE(a.tacticas, '[]')           AS tacticas,
+                COALESCE(a.tecnicas, '[]')           AS tecnicas
             FROM alertas a
             LEFT JOIN tickets t ON t.alerta_id = a.id
             ORDER BY a.id DESC
@@ -497,6 +512,15 @@ def leer_alertas() -> list:
         for fila in c.fetchall():
             alerta = dict(fila)
             alerta["_id"] = alerta["id"]  # alias para el frontend
+            # Deserializar ATT&CK de JSON a listas Python
+            try:
+                alerta["tacticas"] = json.loads(alerta.get("tacticas") or "[]")
+            except Exception:
+                alerta["tacticas"] = []
+            try:
+                alerta["tecnicas"] = json.loads(alerta.get("tecnicas") or "[]")
+            except Exception:
+                alerta["tecnicas"] = []
 
             # Traer los eventos individuales de esta alerta
             c.execute("""
@@ -1462,7 +1486,9 @@ def leer_alertas_filtradas(
                 a.summary, a.accion_recomendada,
                 COALESCE(a.ocurrencias, 1)          AS ocurrencias,
                 COALESCE(a.ultima_vez, a.timestamp) AS ultima_vez,
-                COALESCE(t.estado, 'nueva')         AS estado
+                COALESCE(t.estado, 'nueva')         AS estado,
+                COALESCE(a.tacticas, '[]')           AS tacticas,
+                COALESCE(a.tecnicas, '[]')           AS tecnicas
             FROM alertas a
             LEFT JOIN tickets t ON t.alerta_id = a.id
             {where}
@@ -1474,6 +1500,14 @@ def leer_alertas_filtradas(
         for fila in c.fetchall():
             alerta = dict(fila)
             alerta["_id"] = alerta["id"]
+            try:
+                alerta["tacticas"] = json.loads(alerta.get("tacticas") or "[]")
+            except Exception:
+                alerta["tacticas"] = []
+            try:
+                alerta["tecnicas"] = json.loads(alerta.get("tecnicas") or "[]")
+            except Exception:
+                alerta["tecnicas"] = []
             c.execute("""
                 SELECT event_id AS id, descripcion, riesgo
                 FROM eventos_alerta WHERE alerta_id = ?

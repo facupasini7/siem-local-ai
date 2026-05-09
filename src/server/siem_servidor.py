@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import database  # módulo local — maneja toda la persistencia en SQLite
+import mitre     # módulo local — enriquecimiento MITRE ATT&CK
 
 # ─── CONFIGURACION ───────────────────────────────────────────
 # Raíz del proyecto: src/server/ → src/ → raíz
@@ -385,6 +386,11 @@ def procesar_ciclo():
                 analysis           = analyze_with_ollama(logs, fuente=agente)
                 analysis["agente"] = agente
                 analysis["ip"]     = ip
+
+                # Enriquecer con MITRE ATT&CK antes de guardar
+                mitre.enriquecer_alerta(analysis, logs)
+                if analysis.get("tacticas"):
+                    log(f"  ATT&CK: {', '.join(analysis['tacticas'])}")
 
                 # Garantizar que la severidad Python (determinista) sea el piso.
                 # El LLM puede devolver algo menor por alucinación; Python no se equivoca.

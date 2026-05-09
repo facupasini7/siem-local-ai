@@ -247,6 +247,51 @@ nav { flex:1; padding:10px 0; overflow-y:auto; }
 .chart-wrap { position:relative; height:200px; }
 .chart-wrap canvas { max-height:200px; }
 
+/* ── MITRE ATT&CK ────────────────────────────────────────── */
+.attack-strip { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 10px; }
+.badge-attack {
+  font-size:10px; font-weight:600; padding:2px 8px; border-radius:20px;
+  border:1px solid; white-space:nowrap; cursor:default; letter-spacing:.2px;
+}
+.mitre-widget {
+  background:var(--bg-card); border:1px solid var(--border); border-radius:10px;
+  padding:16px 18px; margin-bottom:24px;
+}
+.mitre-widget-title {
+  font-size:12px; font-weight:600; color:var(--text-2);
+  text-transform:uppercase; letter-spacing:.5px; margin-bottom:14px;
+  display:flex; align-items:center; gap:8px;
+}
+.mitre-tactics-grid {
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:8px;
+}
+.mitre-tactic-row {
+  display:flex; align-items:center; gap:8px; padding:6px 10px;
+  background:var(--bg); border-radius:6px; border:1px solid var(--border-sub);
+}
+.mitre-tactic-bar-wrap {
+  flex:1; height:4px; background:var(--border); border-radius:2px; overflow:hidden;
+}
+.mitre-tactic-bar { height:100%; border-radius:2px; transition:width .4s ease; }
+.mitre-tactic-label { font-size:11px; color:var(--text); white-space:nowrap; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.mitre-tactic-count { font-size:11px; font-weight:700; white-space:nowrap; }
+.mitre-top-tecnicas { margin-top:14px; }
+.mitre-tec-item {
+  display:flex; align-items:center; gap:8px; padding:5px 0;
+  border-bottom:1px solid var(--border-sub);
+}
+.mitre-tec-item:last-child { border-bottom:none; }
+.mitre-tec-id { font-family:monospace; font-size:11px; color:var(--blue); font-weight:700; min-width:52px; }
+.mitre-tec-nombre { font-size:12px; color:var(--text); flex:1; }
+.mitre-tec-tactica { font-size:10px; color:var(--text-2); }
+.mitre-tec-count { font-size:12px; font-weight:700; min-width:24px; text-align:right; }
+/* Filtro ATT&CK en la barra de alertas */
+.filtro-attack-wrap { display:flex; align-items:center; gap:6px; }
+#filtro-tactica {
+  padding:4px 8px; font-size:12px; height:30px; border-radius:20px;
+  max-width:190px;
+}
+
 /* ── Badges ──────────────────────────────────────────────── */
 .badge {
   font-size:11px; font-weight:700; padding:3px 9px; border-radius:20px;
@@ -801,6 +846,12 @@ body:not(.is-admin) .admin-only { display:none; }
         </div>
       </div>
 
+      <!-- MITRE ATT&CK Widget -->
+      <div class="section-title">MITRE ATT&CK — Tácticas detectadas</div>
+      <div class="mitre-widget" id="mitre-widget">
+        <div style="font-size:13px;color:var(--text-2)">Cargando…</div>
+      </div>
+
       <div class="section-title">Agentes conectados</div>
       <div class="agentes-strip" id="ov-agentes"></div>
       <div class="section-title">Últimas alertas</div>
@@ -829,6 +880,14 @@ body:not(.is-admin) .admin-only { display:none; }
           style="padding:4px 8px;font-size:12px;height:30px;border-radius:20px;">
           <option value="">Todos</option>
         </select>
+        <div class="sep"></div>
+        <span class="label">ATT&CK:</span>
+        <div class="filtro-attack-wrap">
+          <select id="filtro-tactica" onchange="renderAlertas()"
+            style="padding:4px 8px;font-size:12px;height:30px;border-radius:20px;">
+            <option value="">Todas las tácticas</option>
+          </select>
+        </div>
         <div class="sep"></div>
         <input type="search" class="search-input" id="search-alerta"
                placeholder="🔍 Buscar en alertas…" oninput="renderAlertas()" />
@@ -1681,6 +1740,78 @@ function renderCharts() {
   }
 }
 
+async function renderMitreWidget() {
+  const widget = document.getElementById("mitre-widget");
+  if (!widget) return;
+  const res = await api("GET", "/api/mitre/stats");
+  if (!res || !res.ok) {
+    widget.innerHTML = `<div style="font-size:13px;color:var(--text-2)">Sin datos ATT&CK aún. Las alertas nuevas se enriquecen automáticamente.</div>`;
+    return;
+  }
+  const stats = await res.json();
+  const { por_tactica, top_tecnicas, colores_tactica } = stats;
+
+  if (!Object.keys(por_tactica).length) {
+    widget.innerHTML = `<div style="font-size:13px;color:var(--text-2)">Sin tácticas detectadas todavía.</div>`;
+    return;
+  }
+
+  const maxCount = Math.max(...Object.values(por_tactica));
+
+  // Rellenar el select de filtro en la pestaña Alertas
+  const sel = document.getElementById("filtro-tactica");
+  if (sel) {
+    const tacActuales = [...sel.options].map(o => o.value);
+    Object.keys(por_tactica).forEach(t => {
+      if (!tacActuales.includes(t)) {
+        const opt = document.createElement("option");
+        opt.value = t; opt.textContent = t;
+        sel.appendChild(opt);
+      }
+    });
+  }
+
+  const tacticasHtml = Object.entries(por_tactica)
+    .sort((a,b) => b[1]-a[1])
+    .map(([tac, cnt]) => {
+      const color = colores_tactica[tac] || "#8b949e";
+      const pct   = Math.round((cnt / maxCount) * 100);
+      return `
+        <div class="mitre-tactic-row">
+          <div class="mitre-tactic-label" title="${escHtml(tac)}">${escHtml(tac)}</div>
+          <div class="mitre-tactic-bar-wrap">
+            <div class="mitre-tactic-bar" style="width:${pct}%;background:${color}"></div>
+          </div>
+          <div class="mitre-tactic-count" style="color:${color}">${cnt}</div>
+        </div>`;
+    }).join("");
+
+  const tecnHtml = (top_tecnicas || []).slice(0, 6).map(t => {
+    const color = colores_tactica[t.tactica] || "#8b949e";
+    return `
+      <div class="mitre-tec-item">
+        <span class="mitre-tec-id">${escHtml(t.id)}</span>
+        <div style="flex:1;min-width:0">
+          <div class="mitre-tec-nombre">${escHtml(t.nombre)}</div>
+          <div class="mitre-tec-tactica" style="color:${color}">${escHtml(t.tactica)}</div>
+        </div>
+        <span class="mitre-tec-count" style="color:${color}">${t.count}</span>
+      </div>`;
+  }).join("");
+
+  widget.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <div>
+        <div class="mitre-widget-title">🛡️ Tácticas detectadas</div>
+        <div class="mitre-tactics-grid">${tacticasHtml}</div>
+      </div>
+      <div>
+        <div class="mitre-widget-title">🎯 Top técnicas</div>
+        <div class="mitre-top-tecnicas">${tecnHtml || '<div style="font-size:13px;color:var(--text-2)">Sin datos</div>'}</div>
+      </div>
+    </div>`;
+}
+
 async function renderOverview() {
   // Stats por severidad
   const cnt = { critical:0, high:0, medium:0, low:0 };
@@ -1705,6 +1836,9 @@ async function renderOverview() {
 
   // Gráficos
   renderCharts();
+
+  // Widget MITRE ATT&CK
+  await renderMitreWidget();
 
   // Agentes (últimos contactos)
   await renderAgentesStrip();
@@ -1803,11 +1937,13 @@ function renderAlertas() {
   const lista        = document.getElementById("alertas-lista");
   const search       = (document.getElementById("search-alerta")?.value || "").toLowerCase();
   const filtroAgente = document.getElementById("filtro-agente")?.value || "";
+  const filtroTactica = document.getElementById("filtro-tactica")?.value || "";
 
   const filtradas = todasAlertas.filter(a => {
     if (filtroSev    !== "todas" && a.severity !== filtroSev)       return false;
     if (filtroEst    !== "todos" && a.estado   !== filtroEst)       return false;
     if (filtroAgente && a.fuente !== filtroAgente)                  return false;
+    if (filtroTactica && !(a.tacticas || []).includes(filtroTactica)) return false;
     if (search && !`${a.summary} ${a.fuente} ${a.ip}`.toLowerCase().includes(search)) return false;
     return true;
   });
@@ -1867,6 +2003,26 @@ function buildCard(a) {
                   : (a.fuente||'').includes('windows') ? 'os-windows'
                   : (a.fuente||'').includes('aws')     ? 'os-aws' : '';
 
+  // Colores por táctica ATT&CK (mismo mapa que mitre.py)
+  const TACTICA_COLOR = {
+    "Initial Access":"#e3b341","Execution":"#f0883e","Persistence":"#bc8cff",
+    "Privilege Escalation":"#f85149","Defense Evasion":"#79c0ff",
+    "Credential Access":"#ff7b72","Discovery":"#56d364","Lateral Movement":"#ffa657",
+    "Collection":"#d2a8ff","Command and Control":"#58a6ff",
+    "Exfiltration":"#e3b341","Impact":"#f85149",
+  };
+  const tacticas  = a.tacticas || [];
+  const tecnicas  = a.tecnicas  || [];
+  const attackBadges = tacticas.map(t => {
+    const c = TACTICA_COLOR[t] || "#8b949e";
+    return `<span class="badge-attack" style="color:${c};border-color:${c}44;background:${c}14"
+              title="${escHtml(t)}">${escHtml(t)}</span>`;
+  }).join("");
+  const tecnBadges = tecnicas.map(t =>
+    `<span style="font-size:10px;color:var(--blue);font-family:monospace;margin-right:6px"
+            title="${escHtml(t.nombre)} — ${escHtml(t.tactica)}">${escHtml(t.id)}</span>`
+  ).join("");
+
   return `
     <div class="alerta-card ${a.severity} ${a.estado}">
       <div class="card-header">
@@ -1882,6 +2038,7 @@ function buildCard(a) {
         </div>
       </div>
       <div class="card-body">
+        ${attackBadges ? `<div class="attack-strip">${attackBadges}${tecnBadges ? `<span style="margin-left:4px;color:var(--text-3)">·</span> ${tecnBadges}` : ""}</div>` : ""}
         <div class="card-accion"><strong>Acción:</strong> ${accion}</div>
         ${eventos ? `<div class="eventos-lista">${eventos}</div>` : ""}
         <div class="gestion">

@@ -9,6 +9,7 @@ from pathlib import Path
 
 import database  # módulo local — persistencia SQLite
 import auth      # módulo local — autenticación bcrypt + sesiones
+import mitre     # módulo local — enriquecimiento MITRE ATT&CK
 import secrets as _secrets_mod
 
 # ── Tokens temporales para login en dos pasos (TOTP) ─────────
@@ -630,6 +631,14 @@ class Handler(BaseHTTPRequestHandler):
             if not self._require_permission("ver_agentes"):
                 return
             self.send_json(database.leer_agentes())
+
+        elif path == "/api/mitre/stats":
+            # Estadísticas ATT&CK: distribución por táctica y top técnicas.
+            # Usado por el widget MITRE del resumen y la pestaña de alertas.
+            if not self._require_permission("ver_alertas"):
+                return
+            alertas = database.leer_alertas()
+            self.send_json(mitre.estadisticas(alertas))
 
         elif path == "/api/usuarios":
             if not self._require_permission("ver_usuarios"):
@@ -1542,6 +1551,9 @@ class Handler(BaseHTTPRequestHandler):
                     "riesgo":      severity,
                 }],
             }
+
+            # Enriquecer con MITRE ATT&CK antes de guardar
+            mitre.enriquecer_alerta(analysis)
 
             alerta_id, es_nueva = database.guardar_alerta(analysis, ts)
             database.registrar_auditoria(
