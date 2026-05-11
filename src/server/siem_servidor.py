@@ -258,10 +258,12 @@ JSON:"""
 
     return analysis
 
-def enviar_telegram(summary: str, fuente: str, severity: str, ip: str = "") -> bool:
+def enviar_telegram(summary: str, fuente: str, severity: str, ip: str = "",
+                    tacticas: list = None, tecnicas: list = None,
+                    ip_score: int = None, ip_pais: str = None) -> bool:
     """
-    Envía una alerta crítica a Telegram vía Bot API.
-    Usa urllib (sin requests) para no añadir dependencias en el servidor de análisis.
+    Envía una alerta HIGH/CRITICAL a Telegram vía Bot API.
+    Incluye información de MITRE ATT&CK y AbuseIPDB si está disponible.
     Retorna True si el envío fue exitoso.
     """
     try:
@@ -278,13 +280,30 @@ def enviar_telegram(summary: str, fuente: str, severity: str, ip: str = "") -> b
         _ctx.verify_mode    = _ssl.CERT_NONE
 
         sev_emoji = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🟢"}.get(severity, "⚪")
+
+        # Línea MITRE ATT&CK (si hay datos)
+        mitre_linea = ""
+        if tacticas or tecnicas:
+            tac_str  = ", ".join(tacticas[:3]) if tacticas else "—"
+            tec_list = [f"{t['id']} {t['nombre']}" for t in (tecnicas or [])[:3]]
+            tec_str  = ", ".join(tec_list) if tec_list else "—"
+            mitre_linea = f"🛡️ *MITRE ATT&CK:* {tac_str}\n🎯 *Técnica:* `{tec_str}`\n"
+
+        # Línea AbuseIPDB (si hay datos)
+        abuse_linea = ""
+        if ip_score is not None:
+            nivel = "🔴 MALICIOSA" if ip_score >= 90 else "🟠 Sospechosa" if ip_score >= 75 else "🟡 Bajo riesgo"
+            abuse_linea = f"🌐 *IP Reputation:* {nivel} — Score `{ip_score}/100` ({ip_pais or '?'})\n"
+
         texto = (
             f"{sev_emoji} *SIEM ALERTA {severity.upper()}*\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"*Agente:* `{fuente}`\n"
             f"*IP:* `{ip or 'desconocida'}`\n"
-            f"*Resumen:* {summary[:400]}\n"
+            f"*Resumen:* {summary[:300]}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"{mitre_linea}"
+            f"{abuse_linea}"
             f"_SIEM Local — {datetime.now().strftime('%d/%m/%Y %H:%M')}_"
         )
         payload = _json.dumps({
@@ -435,15 +454,19 @@ def procesar_ciclo():
                     notificar_windows(sev, analysis.get("summary", ""), fuente=agente)
                     log(f"  Notificacion Windows enviada para {agente}")
 
-                if sev == "critical":
+                if sev in ("high", "critical"):
                     ok = enviar_telegram(
-                        summary  = analysis.get("summary", ""),
-                        fuente   = agente,
-                        severity = sev,
-                        ip       = ip
+                        summary   = analysis.get("summary", ""),
+                        fuente    = agente,
+                        severity  = sev,
+                        ip        = ip,
+                        tacticas  = analysis.get("tacticas"),
+                        tecnicas  = analysis.get("tecnicas"),
+                        ip_score  = analysis.get("ip_score"),
+                        ip_pais   = analysis.get("ip_pais"),
                     )
                     if ok:
-                        log(f"  [Telegram] Alerta critica enviada correctamente")
+                        log(f"  [Telegram] Alerta {sev.upper()} enviada correctamente")
                     else:
                         log(f"  [Telegram] No configurado o error al enviar")
 

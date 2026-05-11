@@ -2112,7 +2112,7 @@ function buildCard(a) {
   }).join("");
   const tecnBadges = tecnicas.map(t =>
     `<span style="font-size:10px;color:var(--blue);font-family:monospace;margin-right:6px"
-            title="${escHtml(t.nombre)} — ${escHtml(t.tactica)}">${escHtml(t.id)}</span>`
+            title="${escHtml(t.tactica)}"><code style="color:var(--blue)">${escHtml(t.id)}</code> <span style="color:var(--text-2);font-family:inherit">${escHtml(t.nombre)}</span></span>`
   ).join("");
 
   // Badge de reputación IP (AbuseIPDB)

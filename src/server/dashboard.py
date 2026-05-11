@@ -20,7 +20,9 @@ _pending_totp: dict = {}
 _pending_totp_lock  = threading.Lock()   # protege acceso concurrente al dict
 
 
-def _enviar_telegram_fim(summary: str, fuente: str, severity: str, archivo: str, ip: str = ""):
+def _enviar_telegram_fim(summary: str, fuente: str, severity: str, archivo: str, ip: str = "",
+                         tacticas: list = None, tecnicas: list = None,
+                         ip_score: int = None, ip_pais: str = None):
     """
     Notifica por Telegram cuando el endpoint FIM genera una alerta HIGH o CRITICAL.
     Solo envía si telegram_activo=1 y las credenciales están configuradas.
@@ -85,6 +87,20 @@ def _enviar_telegram_fim(summary: str, fuente: str, severity: str, archivo: str,
         evento_ico = tipo_emoji.get(tipo_detectado, "⚠️")
         evento_lbl = accion_label.get(tipo_detectado, summary)
 
+        # Línea MITRE ATT&CK (si hay datos)
+        mitre_linea = ""
+        if tacticas or tecnicas:
+            tac_str  = ", ".join(tacticas[:3]) if tacticas else "—"
+            tec_list = [f"{t['id']} {t['nombre']}" for t in (tecnicas or [])[:3]]
+            tec_str  = ", ".join(tec_list) if tec_list else "—"
+            mitre_linea = f"🛡️ *MITRE ATT&CK:* {tac_str}\n🎯 *Técnica:* `{tec_str}`\n"
+
+        # Línea AbuseIPDB (solo si IP pública con score)
+        abuse_linea = ""
+        if ip_score is not None:
+            nivel = "🔴 MALICIOSA" if ip_score >= 90 else "🟠 Sospechosa" if ip_score >= 75 else "🟡 Bajo riesgo"
+            abuse_linea = f"🌐 *IP Reputation:* {nivel} — Score `{ip_score}/100` ({ip_pais or '?'})\n"
+
         texto = (
             f"{sev_emoji} *Alerta FIM — {severity.upper()}*\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -94,6 +110,8 @@ def _enviar_telegram_fim(summary: str, fuente: str, severity: str, archivo: str,
             f"🖥️ *Agente:* `{fuente}`  \\|  `{ip or 'desconocida'}`\n"
             f"🕐 *Hora:* {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"{mitre_linea}"
+            f"{abuse_linea}"
             f"⚡ _Revisá el Dashboard para más detalles_"
         )
         payload = _json.dumps({
@@ -1615,7 +1633,17 @@ class Handler(BaseHTTPRequestHandler):
             if severity in ("high", "critical"):
                 threading.Thread(
                     target=_enviar_telegram_fim,
-                    args=(analysis["summary"], agente, severity, archivo, ip),
+                    kwargs={
+                        "summary":  analysis["summary"],
+                        "fuente":   agente,
+                        "severity": severity,
+                        "archivo":  archivo,
+                        "ip":       ip,
+                        "tacticas": analysis.get("tacticas"),
+                        "tecnicas": analysis.get("tecnicas"),
+                        "ip_score": analysis.get("ip_score"),
+                        "ip_pais":  analysis.get("ip_pais"),
+                    },
                     daemon=True
                 ).start()
             self.send_json({"ok": True, "alerta_id": alerta_id, "es_nueva": es_nueva})
