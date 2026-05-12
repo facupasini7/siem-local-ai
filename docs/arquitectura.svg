@@ -126,13 +126,15 @@
 
   <!-- ══════════════════════════════ FLECHAS ══════════════════════════════ -->
 
-  <!-- Agentes → Dashboard (HTTP POST) -->
-  <path d="M200,141 Q460,110 720,141" fill="none" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arr-blue)"/>
-  <text x="460" y="106" text-anchor="middle" fill="#58a6ff" font-size="9">HTTP POST /api/eventos-externos</text>
+  <!-- Agente Windows → Dashboard: rodea por ARRIBA de todos los bloques -->
+  <path d="M122,96 L122,58 L798,58 L798,96" fill="none" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arr-blue)"/>
+  <rect x="348" y="44" width="224" height="16" rx="4" fill="#0d1117"/>
+  <text x="460" y="56" text-anchor="middle" fill="#58a6ff" font-size="9">HTTP POST /api/eventos-externos</text>
 
-  <path d="M200,249 Q460,220 720,220" fill="none" stroke="#58a6ff" stroke-width="1.5" stroke-dasharray="4,2" marker-end="url(#arr-blue)"/>
+  <!-- Agente Ubuntu → Dashboard: rodea por ARRIBA con leve offset -->
+  <path d="M122,204 L122,68 L810,68 L810,96" fill="none" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arr-blue)"/>
 
-  <!-- Dashboard → Servidor (despacha análisis) -->
+  <!-- Dashboard → Servidor (despacha análisis internamente) -->
   <line x1="720" y1="155" x2="676" y2="155" stroke="#30363d" stroke-width="1.5" marker-end="url(#arr)"/>
 
   <!-- Servidor → Ollama -->
@@ -150,7 +152,7 @@
   <!-- Dashboard → Telegram -->
   <line x1="798" y1="336" x2="798" y2="438" stroke="#f0883e" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arr-orange)"/>
 
-  <!-- Todo → SQLite -->
+  <!-- Servidor + Dashboard → SQLite -->
   <line x1="354" y1="336" x2="200" y2="368" stroke="#484f58" stroke-width="1.2" marker-end="url(#arr-gray)"/>
   <line x1="760" y1="336" x2="256" y2="400" stroke="#484f58" stroke-width="1.2" marker-end="url(#arr-gray)"/>
 
