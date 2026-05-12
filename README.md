@@ -22,16 +22,63 @@ SIEM (Security Information and Event Management) local, 100% privado, potenciado
 
 ## Arquitectura
 
-```
-src/agents/windows/agente_windows.py  ──┐
-                                         ├──► siem_servidor.py ──► Ollama (qwen2.5:3b)
-src/agents/ubuntu/agente_ubuntu.py    ──┘         │
-                                                   ▼
-                                            dashboard.py  ──► http://localhost:8080
-                                                   │
-                                            mitre.py  (MITRE ATT&CK)
-                                            abuseipdb.py  (Threat Intelligence)
-                                            encryption.py (Fernet)
+```mermaid
+flowchart TB
+    subgraph AGENTES["🖥️ Agentes de recolección"]
+        AW["agente_windows.py\nWindows Event Viewer\n+ FIM watchdog"]
+        AU["agente_ubuntu.py\n/var/log/auth.log\njournald · syslog"]
+    end
+
+    subgraph SERVIDOR["⚙️ Servidor de análisis"]
+        SRV["siem_servidor.py\nMotor híbrido Python + IA"]
+        OLLAMA["🤖 Ollama\nqwen2.5:3b"]
+        MITRE["mitre.py\nMITRE ATT&CK / TTPs"]
+        ABUSE["abuseipdb.py\nThreat Intelligence"]
+    end
+
+    subgraph DASHBOARD["🌐 Dashboard — puerto 8080"]
+        DASH["dashboard.py\nServidor HTTP + API REST"]
+        ENC["encryption.py\nCifrado Fernet"]
+        AUTH["auth.py\nbcrypt + TOTP 2FA"]
+    end
+
+    subgraph DB["🗄️ Base de datos — SQLite"]
+        D1["Alertas + deduplicación"]
+        D2["Usuarios + roles + auditoría"]
+        D3["Caché IP reputation 24h"]
+        D4["Config cifrada"]
+    end
+
+    subgraph FRONTEND["📊 Frontend"]
+        UI["index.html\nVanilla JS + Chart.js"]
+    end
+
+    subgraph EXTERNOS["☁️ Servicios externos"]
+        ABUSEAPI["AbuseIPDB API\n1.000 req/día gratuitas"]
+        TG["Telegram Bot API\nAlertas HIGH/CRITICAL"]
+    end
+
+    AW -- "HTTP POST /api/eventos-externos" --> DASH
+    AU -- "HTTP POST /api/eventos-externos" --> DASH
+    DASH --> SRV
+    SRV --> OLLAMA
+    SRV --> MITRE
+    SRV --> ABUSE
+    ABUSE -- "HTTPS" --> ABUSEAPI
+    SRV -- "Alerta HIGH/CRITICAL" --> TG
+    DASH -- "Alerta FIM HIGH/CRITICAL" --> TG
+    DASH --- ENC
+    DASH --- AUTH
+    SRV --- DB
+    DASH --- DB
+    UI -- "HTTP / WebSocket" --> DASH
+
+    style AGENTES fill:#1c2128,stroke:#30363d,color:#e6edf3
+    style SERVIDOR fill:#1c2128,stroke:#1f6feb,color:#e6edf3
+    style DASHBOARD fill:#1c2128,stroke:#3fb950,color:#e6edf3
+    style DB fill:#1c2128,stroke:#bc8cff,color:#e6edf3
+    style FRONTEND fill:#1c2128,stroke:#e3b341,color:#e6edf3
+    style EXTERNOS fill:#1c2128,stroke:#f0883e,color:#e6edf3
 ```
 
 ## Stack
