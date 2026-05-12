@@ -22,6 +22,8 @@ SIEM (Security Information and Event Management) local, 100% privado, potenciado
 
 ## Arquitectura
 
+![Arquitectura del SIEM](docs/arquitectura.svg)
+
 ```mermaid
 flowchart TB
     subgraph AGENTES["🖥️ Agentes de recolección"]

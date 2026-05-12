@@ -1,0 +1,172 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 640" width="920" height="640" style="font-family:'Segoe UI',Arial,sans-serif">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" style="stop-color:#0d1117"/>
+      <stop offset="100%" style="stop-color:#161b22"/>
+    </linearGradient>
+    <marker id="arr" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#30363d"/>
+    </marker>
+    <marker id="arr-blue" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#58a6ff"/>
+    </marker>
+    <marker id="arr-orange" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#f0883e"/>
+    </marker>
+    <marker id="arr-yellow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#e3b341"/>
+    </marker>
+    <marker id="arr-gray" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#8b949e"/>
+    </marker>
+  </defs>
+
+  <!-- Fondo -->
+  <rect width="920" height="640" fill="url(#bgGrad)" rx="16"/>
+  <rect width="920" height="640" fill="none" stroke="#30363d" stroke-width="1.5" rx="16"/>
+
+  <!-- Título -->
+  <text x="460" y="36" text-anchor="middle" fill="#e6edf3" font-size="16" font-weight="700" letter-spacing="0.5">SIEM Local con IA — Arquitectura del Sistema</text>
+  <line x1="40" y1="50" x2="880" y2="50" stroke="#21262d" stroke-width="1"/>
+
+  <!-- ══════════════════════════════ ZONA AGENTES ══════════════════════════════ -->
+  <rect x="28" y="64" width="188" height="272" rx="10" fill="#161b22" stroke="#1f6feb" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <text x="122" y="84" text-anchor="middle" fill="#58a6ff" font-size="10" font-weight="700" letter-spacing="1.5">🖥  AGENTES</text>
+
+  <!-- Agente Windows -->
+  <rect x="44" y="96" width="156" height="90" rx="8" fill="#1c2128" stroke="#1f6feb" stroke-width="1"/>
+  <text x="122" y="118" text-anchor="middle" fill="#e6edf3" font-size="18">🪟</text>
+  <text x="122" y="138" text-anchor="middle" fill="#e6edf3" font-size="11" font-weight="600">agente_windows.py</text>
+  <text x="122" y="154" text-anchor="middle" fill="#8b949e" font-size="10">Windows Event Viewer</text>
+  <text x="122" y="168" text-anchor="middle" fill="#8b949e" font-size="10">FIM watchdog</text>
+
+  <!-- Agente Ubuntu -->
+  <rect x="44" y="204" width="156" height="90" rx="8" fill="#1c2128" stroke="#1f6feb" stroke-width="1"/>
+  <text x="122" y="226" text-anchor="middle" fill="#e6edf3" font-size="18">🐧</text>
+  <text x="122" y="246" text-anchor="middle" fill="#e6edf3" font-size="11" font-weight="600">agente_ubuntu.py</text>
+  <text x="122" y="262" text-anchor="middle" fill="#8b949e" font-size="10">/var/log/auth.log</text>
+  <text x="122" y="276" text-anchor="middle" fill="#8b949e" font-size="10">journald · syslog</text>
+
+  <!-- ══════════════════════════════ ZONA SERVIDOR ══════════════════════════════ -->
+  <rect x="244" y="64" width="432" height="272" rx="10" fill="#161b22" stroke="#3fb950" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <text x="460" y="84" text-anchor="middle" fill="#3fb950" font-size="10" font-weight="700" letter-spacing="1.5">⚙  SERVIDOR DE ANÁLISIS</text>
+
+  <!-- siem_servidor.py -->
+  <rect x="260" y="96" width="188" height="90" rx="8" fill="#1c2128" stroke="#3fb950" stroke-width="1"/>
+  <text x="354" y="120" text-anchor="middle" fill="#e6edf3" font-size="11" font-weight="600">siem_servidor.py</text>
+  <text x="354" y="138" text-anchor="middle" fill="#8b949e" font-size="10">Motor híbrido Python + IA</text>
+  <text x="354" y="154" text-anchor="middle" fill="#8b949e" font-size="10">Deduplicación · Análisis</text>
+  <text x="354" y="170" text-anchor="middle" fill="#484f58" font-size="9">cada 5 minutos</text>
+
+  <!-- Ollama -->
+  <rect x="468" y="96" width="188" height="90" rx="8" fill="#1c2128" stroke="#3fb950" stroke-width="1"/>
+  <text x="562" y="116" text-anchor="middle" fill="#e6edf3" font-size="18">🤖</text>
+  <text x="562" y="138" text-anchor="middle" fill="#e6edf3" font-size="11" font-weight="600">Ollama — qwen2.5:3b</text>
+  <text x="562" y="154" text-anchor="middle" fill="#8b949e" font-size="10">1.9 GB VRAM</text>
+  <text x="562" y="170" text-anchor="middle" fill="#8b949e" font-size="10">Análisis + recomendaciones</text>
+
+  <!-- mitre.py -->
+  <rect x="260" y="204" width="188" height="90" rx="8" fill="#1c2128" stroke="#f85149" stroke-width="1"/>
+  <text x="354" y="224" text-anchor="middle" fill="#f85149" font-size="18">🛡</text>
+  <text x="354" y="246" text-anchor="middle" fill="#e6edf3" font-size="11" font-weight="600">mitre.py</text>
+  <text x="354" y="262" text-anchor="middle" fill="#8b949e" font-size="10">MITRE ATT&amp;CK / TTPs</text>
+  <text x="354" y="278" text-anchor="middle" fill="#8b949e" font-size="10">Tácticas · Técnicas</text>
+
+  <!-- abuseipdb.py -->
+  <rect x="468" y="204" width="188" height="90" rx="8" fill="#1c2128" stroke="#e3b341" stroke-width="1"/>
+  <text x="562" y="224" text-anchor="middle" fill="#e3b341" font-size="18">🌐</text>
+  <text x="562" y="246" text-anchor="middle" fill="#e6edf3" font-size="11" font-weight="600">abuseipdb.py</text>
+  <text x="562" y="262" text-anchor="middle" fill="#8b949e" font-size="10">Threat Intelligence</text>
+  <text x="562" y="278" text-anchor="middle" fill="#8b949e" font-size="10">Caché SQLite 24h</text>
+
+  <!-- ══════════════════════════════ ZONA DASHBOARD ══════════════════════════════ -->
+  <rect x="704" y="64" width="188" height="272" rx="10" fill="#161b22" stroke="#bc8cff" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <text x="798" y="84" text-anchor="middle" fill="#bc8cff" font-size="10" font-weight="700" letter-spacing="1.5">🌐  DASHBOARD</text>
+
+  <!-- dashboard.py -->
+  <rect x="720" y="96" width="156" height="90" rx="8" fill="#1c2128" stroke="#bc8cff" stroke-width="1"/>
+  <text x="798" y="120" text-anchor="middle" fill="#e6edf3" font-size="11" font-weight="600">dashboard.py</text>
+  <text x="798" y="138" text-anchor="middle" fill="#8b949e" font-size="10">HTTP :8080 · REST API</text>
+  <text x="798" y="154" text-anchor="middle" fill="#8b949e" font-size="10">FIM endpoint</text>
+  <text x="798" y="170" text-anchor="middle" fill="#8b949e" font-size="10">Config · Roles · PDF</text>
+
+  <!-- auth + encryption -->
+  <rect x="720" y="204" width="156" height="90" rx="8" fill="#1c2128" stroke="#bc8cff" stroke-width="1"/>
+  <text x="798" y="228" text-anchor="middle" fill="#e6edf3" font-size="11" font-weight="600">auth.py</text>
+  <text x="798" y="246" text-anchor="middle" fill="#8b949e" font-size="10">bcrypt · TOTP 2FA</text>
+  <line x1="730" y1="258" x2="866" y2="258" stroke="#21262d" stroke-width="1"/>
+  <text x="798" y="272" text-anchor="middle" fill="#e6edf3" font-size="11" font-weight="600">encryption.py</text>
+  <text x="798" y="286" text-anchor="middle" fill="#8b949e" font-size="10">Fernet</text>
+
+  <!-- ══════════════════════════════ FILA INFERIOR ══════════════════════════════ -->
+
+  <!-- SQLite -->
+  <rect x="28" y="368" width="228" height="110" rx="10" fill="#161b22" stroke="#484f58" stroke-width="1.5"/>
+  <text x="142" y="390" text-anchor="middle" fill="#8b949e" font-size="10" font-weight="700" letter-spacing="1">🗄  DATABASE — SQLite</text>
+  <text x="142" y="408" text-anchor="middle" fill="#8b949e" font-size="10">Alertas · Deduplicación</text>
+  <text x="142" y="424" text-anchor="middle" fill="#8b949e" font-size="10">Usuarios · Roles · Auditoría</text>
+  <text x="142" y="440" text-anchor="middle" fill="#8b949e" font-size="10">Config cifrada · Caché IPs</text>
+  <text x="142" y="460" text-anchor="middle" fill="#484f58" font-size="9">database.py</text>
+
+  <!-- Frontend -->
+  <rect x="280" y="368" width="360" height="110" rx="10" fill="#161b22" stroke="#e3b341" stroke-width="1.5"/>
+  <text x="460" y="390" text-anchor="middle" fill="#e3b341" font-size="10" font-weight="700" letter-spacing="1">📊  FRONTEND</text>
+  <text x="460" y="410" text-anchor="middle" fill="#e6edf3" font-size="11" font-weight="600">index.html — Vanilla JS + Chart.js</text>
+  <text x="460" y="428" text-anchor="middle" fill="#8b949e" font-size="10">Dashboard · Gráficos · Widget MITRE · IPs sospechosas</text>
+  <text x="460" y="445" text-anchor="middle" fill="#8b949e" font-size="10">Gestión de alertas · Auditoría · Usuarios · Roles · FIM config</text>
+  <text x="460" y="462" text-anchor="middle" fill="#8b949e" font-size="10">Políticas de seguridad · AbuseIPDB config · Telegram config</text>
+
+  <!-- Externos -->
+  <rect x="664" y="368" width="228" height="110" rx="10" fill="#161b22" stroke="#f0883e" stroke-width="1.5"/>
+  <text x="778" y="390" text-anchor="middle" fill="#f0883e" font-size="10" font-weight="700" letter-spacing="1">☁  SERVICIOS EXTERNOS</text>
+  <rect x="680" y="400" width="196" height="30" rx="6" fill="#1c2128" stroke="#f0883e" stroke-width="1"/>
+  <text x="778" y="420" text-anchor="middle" fill="#e6edf3" font-size="10">🌐  AbuseIPDB API — threat intel</text>
+  <rect x="680" y="438" width="196" height="30" rx="6" fill="#1c2128" stroke="#f0883e" stroke-width="1"/>
+  <text x="778" y="458" text-anchor="middle" fill="#e6edf3" font-size="10">✈  Telegram Bot — HIGH/CRITICAL</text>
+
+  <!-- ══════════════════════════════ FLECHAS ══════════════════════════════ -->
+
+  <!-- Agentes → Dashboard (HTTP POST) -->
+  <path d="M200,141 Q460,110 720,141" fill="none" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arr-blue)"/>
+  <text x="460" y="106" text-anchor="middle" fill="#58a6ff" font-size="9">HTTP POST /api/eventos-externos</text>
+
+  <path d="M200,249 Q460,220 720,220" fill="none" stroke="#58a6ff" stroke-width="1.5" stroke-dasharray="4,2" marker-end="url(#arr-blue)"/>
+
+  <!-- Dashboard → Servidor (despacha análisis) -->
+  <line x1="720" y1="155" x2="676" y2="155" stroke="#30363d" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Servidor → Ollama -->
+  <line x1="448" y1="141" x2="468" y2="141" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Servidor → MITRE -->
+  <line x1="354" y1="186" x2="354" y2="204" stroke="#f85149" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Servidor → AbuseIPDB -->
+  <line x1="562" y1="186" x2="562" y2="204" stroke="#e3b341" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- AbuseIPDB → API externa -->
+  <line x1="656" y1="260" x2="730" y2="438" stroke="#f0883e" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arr-orange)"/>
+
+  <!-- Dashboard → Telegram -->
+  <line x1="798" y1="336" x2="798" y2="438" stroke="#f0883e" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arr-orange)"/>
+
+  <!-- Todo → SQLite -->
+  <line x1="354" y1="336" x2="200" y2="368" stroke="#484f58" stroke-width="1.2" marker-end="url(#arr-gray)"/>
+  <line x1="760" y1="336" x2="256" y2="400" stroke="#484f58" stroke-width="1.2" marker-end="url(#arr-gray)"/>
+
+  <!-- Dashboard → Frontend -->
+  <line x1="760" y1="336" x2="560" y2="368" stroke="#e3b341" stroke-width="1.5" marker-end="url(#arr-yellow)"/>
+
+  <!-- ══════════════════════════════ LEYENDA ══════════════════════════════ -->
+  <line x1="44" y1="510" x2="70" y2="510" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="76" y="514" fill="#8b949e" font-size="9">Comunicación de red (HTTP)</text>
+  <line x1="220" y1="510" x2="246" y2="510" stroke="#f0883e" stroke-width="1.5" stroke-dasharray="5,3"/>
+  <text x="252" y="514" fill="#8b949e" font-size="9">Servicios externos (HTTPS)</text>
+  <line x1="420" y1="510" x2="446" y2="510" stroke="#484f58" stroke-width="1.2"/>
+  <text x="452" y="514" fill="#8b949e" font-size="9">Acceso a base de datos</text>
+  <line x1="590" y1="510" x2="616" y2="510" stroke="#e3b341" stroke-width="1.5"/>
+  <text x="622" y="514" fill="#8b949e" font-size="9">Datos al frontend</text>
+
+  <!-- Footer -->
+  <text x="460" y="600" text-anchor="middle" fill="#30363d" font-size="10">github.com/facupasini7/siem-local-ai</text>
+</svg>
